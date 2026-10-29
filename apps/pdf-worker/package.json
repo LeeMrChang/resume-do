@@ -1,0 +1,25 @@
+{
+  "name": "@resume-do/pdf-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "install:browser": "playwright install chromium",
+    "test": "node --import tsx --test src/renderer.test.ts",
+    "test:pdf": "RESUME_DO_RUN_PDF_TESTS=1 node --import tsx --test src/renderer.test.ts"
+  },
+  "dependencies": {
+    "@resume-do/schema": "0.1.0",
+    "@resume-do/templates": "0.1.0",
+    "mysql2": "^3.11.5",
+    "playwright": "^1.49.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

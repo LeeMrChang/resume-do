@@ -1,0 +1,26 @@
+{
+  "name": "@resume-do/templates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@resume-do/schema": "0.1.0",
+    "domhandler": "^5.0.3",
+    "htmlparser2": "^9.1.0",
+    "sanitize-html": "^2.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/sanitize-html": "^2.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

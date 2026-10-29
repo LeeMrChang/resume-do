@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="ResumeDoApplication" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="com.resumedo.ResumeDoApplication" />
+    <module name="resume-api" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/apps/api" />
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>

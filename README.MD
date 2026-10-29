@@ -1,0 +1,376 @@
+# Resume Do · 简历工作台
+
+项目标识统一为 `resume-do`：Java 包名 `com.resumedo`，启动类 `ResumeDoApplication`，Maven 坐标 `com.resumedo:resume-api`，npm workspace `@resume-do/*`。本地与 Docker 默认数据库、数据库账号均为 `resume_do`，环境变量使用 `RESUME_DO_*`。目录、Java 包、SQL 标识与环境变量分别遵循各自命名规则。业务表名和 `/api/resumes` 等接口保持原来的业务含义。
+
+**从旧版本升级时，先停止 API 和 worker，并按[命名与数据迁移说明](docs/ops/2026-10-28-internal-naming-migration.md)备份、迁移旧库。直接启动新版不会自动找到旧数据库中的简历。**
+
+一个支持简历编辑、实时 A4 预览、模板切换和 PDF 导出的 Web 项目。项目采用 npm Workspaces 管理前端、PDF worker 和共享 TypeScript 包，Java API 使用 Maven 单独管理。
+
+当前包含 59 套参数化简历皮肤，支持基本信息、求职意向、教育背景、工作经历、技能、项目经历、自我评价等内容编辑，以及照片上传、模块显隐和自动保存。模板参考图片位于 `docs/template-reference`，它们是设计参考，实际预览和 PDF 由项目自己的渲染代码生成。
+
+> 本文按当前源码配置编写。已有 PDF、Word 简历的导入功能尚未实现；超长段落也尚不支持自动拆分跨页，遇到溢出需手动分段或调整字号、行距。
+
+## 1. 技术架构
+
+| 层次 | 使用技术 | 职责 |
+| --- | --- | --- |
+| Web 前端 | React 19、TypeScript 5、Vite 6 | 编辑表单、富文本编辑、自动保存、模板选择、实时预览、导出任务状态展示 |
+| 共享数据模型 | TypeScript、Zod 3 | 简历结构、字段约束、模板编号、默认数据及校验 |
+| 共享模板引擎 | TypeScript、HTML/CSS、htmlparser2、sanitize-html | 59 套皮肤、内容块生成、富文本清洗和分页；前端与 PDF worker 共用 |
+| Java API | JDK 21、Spring Boot 3.5.16、Spring Security、Spring JDBC、jsoup | 注册登录、Session 认证、简历读写、revision 冲突检查、服务端内容校验、导出任务与下载 |
+| 数据库 | MySQL 8.4、Flyway | 存储用户、简历 JSON 和导出任务；应用启动时自动迁移表结构 |
+| PDF worker | Node.js 22、TypeScript、Playwright、mysql2 | 轮询数据库任务队列，启动 Chromium 渲染 A4 PDF，更新任务状态 |
+| 文件存储 | 本地磁盘／Docker 共享卷 | 保存生成的 PDF，API 与 worker 必须使用同一目录 |
+| 容器部署 | Docker Compose、Nginx | 编排 MySQL、API、worker 和静态前端；Nginx 代理 `/api/` |
+
+富文本编辑目前使用浏览器 `contentEditable` 及编辑命令；项目没有接入 TipTap。数据访问使用 Spring JDBC，没有使用 MyBatis 或 JPA。任务队列使用 MySQL 表，不要求额外安装 Redis、RabbitMQ 或 Kafka。
+
+```mermaid
+flowchart LR
+    U[浏览器：React 编辑器] -->|保存／读取／创建导出任务| A[Java API]
+    A --> D[(MySQL)]
+    U --> P[共享模板：实时 A4 预览]
+    W[Node PDF worker] -->|轮询任务／读取快照| D
+    W --> R[共享模板 + Chromium]
+    R --> F[共享目录中的 PDF]
+    A -->|读取 PDF 文件| F
+    A -->|下载| U
+```
+
+导出流程：先保存简历，再由 API 固定该 revision 的内容快照并创建任务；worker 生成文件后，浏览器通过 API 下载。**只启动前后端可以编辑，但 PDF 导出还需要 worker。**
+
+## 2. 目录结构
+
+```text
+resume-do/
+├── apps/
+│   ├── api/                 # Java / Spring Boot 后端，pom.xml
+│   ├── web/                 # React / Vite 前端
+│   └── pdf-worker/          # Node / Playwright PDF 任务进程
+├── packages/
+│   ├── schema/              # 共享数据模型、Zod 校验
+│   └── templates/           # 模板目录、样式、内容块及分页
+├── deploy/                  # Dockerfile、Compose、Nginx 配置
+├── docs/                    # 需求、实现计划、参考图库、验证记录
+├── data/                    # 本地运行数据，PDF 位于 exports/；Git 忽略
+├── .env.example             # 环境变量示例，不会自动加载
+├── package.json             # npm Workspaces 与根目录命令
+└── package-lock.json        # Node 依赖锁定文件
+```
+
+## 3. 本地需要准备的环境
+
+以下是直接在电脑运行源码的要求；如果使用第 9 节 Docker 方式，则宿主机主要需要 Git 和 Docker Compose。
+
+| 软件 | 建议版本 | 说明 |
+| --- | --- | --- |
+| Git | 可用版本即可 | 用于从实际仓库地址拉取源码，也可以解压源码包 |
+| JDK | **21** | 后端编译目标是 Java 21，JDK 8 无法运行本项目 |
+| Maven | **3.9.x** | 项目没有 Maven Wrapper，需要本机 Maven 或 IDEA 内置 Maven |
+| Node.js | **22.x** | `package.json` 要求 Node >= 22；本项目曾使用 22.23.2 验证 |
+| npm | Node 22 随附版本 | 使用 npm Workspaces，在项目根目录统一安装依赖 |
+| MySQL | **8.4.x** | 迁移使用 `utf8mb4_0900_ai_ci`；不要直接换成 MySQL 5.7 或 MariaDB |
+| PDF 浏览器 | Playwright Chromium，或已安装的 Chrome | 仅 PDF worker 需要；两种配置方式见下文 |
+| 编辑器 | IntelliJ IDEA / VS Code 等 | IDEA 用于 Java 开发时需配置 JDK 21 |
+
+第一次安装依赖、下载浏览器、构建 Docker 镜像时，需要能访问相应依赖仓库。
+
+先检查终端实际使用的版本：
+
+```bash
+java -version
+mvn -v
+node -v
+npm -v
+mysql --version
+```
+
+`mvn -v` 中的 Java 版本也应为 21。Apple Silicon Mac 请选择 arm64 的 Node、JDK；Intel Mac 请选择 x64，避免出现 `Bad CPU type in executable`。
+
+## 4. 获取代码与安装依赖
+
+从团队提供的实际 Git 仓库地址克隆后，进入 `resume-do` 根目录；本文不预设远程仓库地址。如果拿到的是源码压缩包，解压后进入包含根 `package.json` 的目录即可。
+
+```bash
+cd /你的项目路径/resume-do
+npm ci
+```
+
+不要分别进入每个 workspace 执行安装。`npm ci` 会按根目录锁文件安装依赖并建立共享包链接。
+
+下面的 `export`、`source`、`set -a` 命令适用于 macOS / Linux 的 Bash、Zsh；Windows 可以使用 Git Bash，PowerShell 配置方式见第 6 节。
+
+## 5. 准备 MySQL
+
+先启动本机 MySQL，再使用有建库和授权权限的账号登录：
+
+```bash
+mysql -u root -p
+```
+
+执行以下 SQL。示例密码 `change_me` 请自行替换，并与后续配置保持一致：
+
+```sql
+CREATE DATABASE IF NOT EXISTS resume_do
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+CREATE USER IF NOT EXISTS 'resume_do'@'localhost' IDENTIFIED BY 'change_me';
+CREATE USER IF NOT EXISTS 'resume_do'@'127.0.0.1' IDENTIFIED BY 'change_me';
+GRANT ALL PRIVILEGES ON resume_do.* TO 'resume_do'@'localhost';
+GRANT ALL PRIVILEGES ON resume_do.* TO 'resume_do'@'127.0.0.1';
+```
+
+如果用户已经存在，`CREATE USER IF NOT EXISTS` 不会修改原密码，请使用该用户的实际密码。验证 TCP 连接：
+
+```bash
+mysql -h 127.0.0.1 -P 3306 -u resume_do -p resume_do
+```
+
+只需要创建数据库和用户。后端首次启动时，Flyway 自动执行 `apps/api/src/main/resources/db/migration/V1__init.sql`，创建 `users`、`resumes`、`export_jobs` 等表。不要额外手动执行同一迁移 SQL。
+
+## 6. 配置环境变量
+
+在项目根目录复制配置示例：
+
+```bash
+cp .env.example .env
+```
+
+按自己的数据库修改 `.env`。下面是一份可供 Bash / Zsh 加载的配置示例：
+
+```bash
+# API 和 PDF worker 共用同一套连接配置
+RESUME_DO_DB_HOST=127.0.0.1
+RESUME_DO_DB_PORT=3306
+RESUME_DO_DB_NAME=resume_do
+RESUME_DO_DB_USER=resume_do
+RESUME_DO_DB_PASSWORD=change_me
+RESUME_DO_STORAGE_DIR=../../data
+RESUME_DO_API_PORT=8080
+RESUME_DO_WEB_PORT=5173
+RESUME_DO_BROWSER_CHANNEL=
+```
+
+本地示例密码为 `change_me`，请与建库时的密码保持一致。密码含空格、`$` 等字符时，加载前使用适当的 shell 引号。
+
+Spring Boot 和 worker 不自动加载根目录 `.env`。每个用于启动 API 或 worker 的终端，先在项目根目录执行：
+
+```bash
+set -a
+source .env
+set +a
+export RESUME_DO_STORAGE_DIR="$PWD/data"
+mkdir -p "$RESUME_DO_STORAGE_DIR"
+```
+
+Vite 会读取根目录 `.env` 中的 `RESUME_DO_WEB_PORT` 和 `RESUME_DO_API_PORT`，用于开发服务端口和 API 代理。这些变量不以 `VITE_` 开头，不会作为前端环境变量暴露给浏览器。生产静态页面通过 Nginx 的 `/api/` 代理访问后端。
+
+| 配置 | 作用与默认值 |
+| --- | --- |
+| `RESUME_DO_DB_HOST / PORT / NAME / USER / PASSWORD` | API、worker 共用的数据库配置；默认 127.0.0.1 / 3306 / resume_do / resume_do / change_me |
+| `RESUME_DO_API_PORT` | 后端端口，8080；同时决定 Vite 代理目标 |
+| `RESUME_DO_WEB_PORT` | 本地 Vite 端口 5173；Docker 示例对外端口 8080 |
+| `RESUME_DO_STORAGE_DIR` | API 和 worker 的同一个 PDF 目录，默认相对各自应用目录 `../../data` |
+| `RESUME_DO_BROWSER_CHANNEL` | 留空使用 Playwright Chromium，`chrome` 使用本机 Chrome |
+| `RESUME_DO_DOWNLOAD_TTL_MINUTES` | 下载有效期，10 分钟 |
+| `RESUME_DO_POLL_MS / RENDER_TIMEOUT_MS` | worker 轮询间隔 800ms / 生成超时 30000ms |
+| `RESUME_DO_DB_POOL_SIZE` | worker 连接池大小，4 |
+| `RESUME_DO_WORKER_ID` | worker 标识，默认主机名和进程号 |
+| `RESUME_DO_LEASE_SECONDS / HEARTBEAT_MS / MAX_ATTEMPTS` | 任务租约 90 秒 / 心跳 20000ms / 最多尝试 3 次 |
+
+旧的项目环境变量不再兼容；请删除 IDEA 运行配置中的旧变量，并按上表填写。`JAVA_HOME`、`NODE_ENV`、`PLAYWRIGHT_BROWSERS_PATH` 等工具标准变量继续使用标准名称。
+
+### Windows PowerShell
+
+PowerShell 不支持 `source .env`，可在每个启动终端逐项配置：
+
+```powershell
+$env:RESUME_DO_DB_HOST = '127.0.0.1'
+$env:RESUME_DO_DB_PORT = '3306'
+$env:RESUME_DO_DB_NAME = 'resume_do'
+$env:RESUME_DO_DB_USER = 'resume_do'
+$env:RESUME_DO_DB_PASSWORD = 'change_me'
+$env:RESUME_DO_STORAGE_DIR = Join-Path (Get-Location) 'data'
+```
+
+IDEA 的 Java 运行配置同样需要单独填写这些变量，不会继承另一个终端的 `source .env`。
+
+## 7. 启动本地开发环境
+
+需要运行 **MySQL + Java API + Web + PDF worker**。MySQL 先启动，随后启动 API；Web 与 worker 可以在各自终端运行。
+
+### 7.1 Java API：终端一
+
+先按第 6 节在项目根目录加载环境变量并设置绝对数据路径，然后执行：
+
+```bash
+cd apps/api
+mvn spring-boot:run
+```
+
+也可以打包后运行：
+
+```bash
+# 在 apps/api 目录执行
+mvn -DskipTests package
+java -jar target/resume-api-0.1.0.jar
+```
+
+看到 `Started ResumeDoApplication` 和 `Tomcat started on port 8080` 表示启动成功。
+
+### 7.2 Web 前端：终端二
+
+在项目根目录执行：
+
+```bash
+npm run dev:web
+```
+
+浏览器打开 **http://localhost:5173/**。开发时 `/api` 会由 Vite 代理到 `http://127.0.0.1:8080`，不需要在前端代码填写数据库连接或单独配置跨域。
+
+如果修改了 API 端口，在根目录 `.env` 设置 `RESUME_DO_API_PORT` 并重启 Vite。若 5173 被占用，Vite 可能选择其他端口，请以终端输出为准。
+
+### 7.3 PDF worker：终端三
+
+先在项目根目录加载第 6 节的环境变量并设置绝对数据路径，然后选下面一种浏览器方式。
+
+**方式 A：使用 Playwright 自带 Chromium。** 首次安装一次：
+
+```bash
+npm run install:browser -w @resume-do/pdf-worker
+```
+
+启动：
+
+```bash
+npm run dev:worker
+```
+
+Linux 如果提示缺少系统库，可使用 `npx playwright install --with-deps chromium` 安装浏览器及所需系统依赖；安装系统依赖可能需要管理员权限。
+
+**方式 B：使用本机已安装的 Google Chrome。** 无需单独下载 Playwright Chromium：
+
+```bash
+RESUME_DO_BROWSER_CHANNEL=chrome npm run dev:worker
+```
+
+PowerShell 对应：
+
+```powershell
+$env:RESUME_DO_BROWSER_CHANNEL = 'chrome'
+npm run dev:worker
+```
+
+看到 `pdf worker started` 只代表进程启动；还应确认没有持续出现 `claim failed` 数据库错误。worker 本身不监听 HTTP 端口，因此不能通过查看 8080 来判断 worker 是否运行。
+
+### 7.4 首次使用与检查
+
+1. 打开 Web 页面并注册账号。项目没有预置可直接使用的管理员密码。
+2. 登录后自动创建默认简历，填写内容并等待“已保存”。
+3. 打开“更换模板”，选择模板后点击“应用”；取消会丢弃本次排版草稿。
+4. 点击“下载 PDF”，等待 worker 完成并自动下载。worker 日志应出现 `export ready`。
+5. 关闭三个运行终端中的服务可按 `Ctrl+C`。Session 保存在 API 进程内，重启后端后可能需要重新登录。
+
+## 8. IntelliJ IDEA 配置
+
+可以打开整个 `resume-do` 目录查看完整项目，再通过 Maven 工具窗口添加／导入 `apps/api/pom.xml`。重新加载 Maven 后，可使用共享运行配置 `.run/ResumeDoApplication.run.xml`；若保留旧配置，删除后重新创建，避免引用旧包或模块。
+
+- **Project SDK、模块 SDK**：选择 JDK 21。只有 JDK 8 时，先安装 JDK 21，再添加到 IDEA SDK 列表。
+- **语言级别、Java 编译目标**：设为 21，避免“源发行版 21 需要目标发行版 21”。
+- **Maven Importer / Runner JDK**：选择 JDK 21。
+- **启动类**：`apps/api/src/main/java/com/resumedo/ResumeDoApplication.java`。
+- **运行配置环境变量**：填写第 6 节的 `RESUME_DO_DB_*`；`RESUME_DO_STORAGE_DIR` 建议填写根目录 `data` 的绝对路径。
+- **工作目录**：建议设为 `apps/api`。如使用相对存储路径，目录不同会改变 `../../data` 的含义。
+- **Node.js 解释器**：选择 Node 22。IDEA 旧终端不会自动刷新 PATH，切换 Node 后关闭旧终端标签，再新开终端检查 `node -v`。
+
+IDEA 的 Java 运行配置不会自动继承另一个终端执行 `source .env` 后的变量，需要单独填写。前端及 worker 可以继续在 IDEA 的两个终端中按第 7 节启动。
+
+启动日志已开启 ANSI 配色，默认显示带头像、经历、教育和技能区域的“Resume Do · 简历工作台”横幅。可以修改 `apps/api/src/main/resources/banner.txt` 定制图案；日志格式和颜色开关位于 `application.yml` 的 `logging.pattern.console`、`spring.output.ansi.enabled`。修改后需重启后端。
+
+## 9. 可选：Docker Compose 运行
+
+仓库包含容器配置，但此前本机验证未覆盖 Docker 镜像构建与运行。首次使用仍需在自己的 Docker 环境验收，尤其是 Chromium 和中文字体。
+
+在项目根目录执行：
+
+```bash
+cp deploy/.env.example deploy/.env
+# 修改 deploy/.env 中的两个密码，再启动
+# RESUME_DO_MYSQL_ROOT_PASSWORD、RESUME_DO_DB_PASSWORD 不可留空
+
+docker compose --env-file deploy/.env -f deploy/compose.yaml config --quiet
+docker compose --env-file deploy/.env -f deploy/compose.yaml up --build -d
+docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f resume-api resume-worker
+```
+
+访问 **http://localhost:8080/**，或 `deploy/.env` 指定的 `RESUME_DO_WEB_PORT`。
+
+- Compose 项目名为 `resume-do`，服务名为 `resume-db`、`resume-api`、`resume-worker`、`resume-web`。
+- 本地与容器数据库默认均为 `resume_do`，账号同名。MySQL 镜像的 `MYSQL_*` 键是镜像标准接口，由 Compose 从项目的 `RESUME_DO_*` 变量传入。
+- MySQL 卷为 `resume_do_mysql_data`；API 与 worker 共用 `resume_do_files` 卷中的 `/data`。
+- 只有 Web 发布端口；本机 Java 占用 8080 时，可把 Docker 的 `RESUME_DO_WEB_PORT` 改为 8088。
+- 停止使用 `docker compose --env-file deploy/.env -f deploy/compose.yaml down`。不要添加 `-v`，会删除数据卷。
+- **旧 Compose 数据卷不会自动接入新项目。** 升级前必须先备份并迁移数据库及文件卷，详见迁移说明。MySQL 镜像初始化变量只在空数据目录生效，修改密码变量不会更改现存数据库账号密码。
+- 当前提供 HTTP；公网部署需配置域名、HTTPS、安全 Cookie 和自己的密码。
+
+## 10. 测试与构建
+
+以下 npm 命令在项目根目录执行：
+
+```bash
+npm run typecheck   # 检查全部 TypeScript workspace
+npm test            # schema、模板与 worker 快照测试；默认跳过真实浏览器 PDF 测试
+npm run build       # 前端生产构建，输出 apps/web/dist
+```
+
+Java 测试与打包：
+
+```bash
+cd apps/api
+mvn test
+mvn package
+```
+
+Java 单元测试不要求启动 MySQL。若受限环境中 Mockito 提示无法 self-attach，这是测试 JVM agent 加载问题，应按实际依赖版本配置 Mockito agent；不要因此修改业务代码或更换成 JDK 8。
+
+真实 PDF 集成测试可独立运行，不需要 API 或数据库，但需要可启动的浏览器：
+
+```bash
+# 在根目录执行；使用已安装 Chrome
+RESUME_DO_BROWSER_CHANNEL=chrome npm run test:pdf -w @resume-do/pdf-worker
+
+# 可选：保留生成文件以检查页数、文字与版式
+RESUME_DO_BROWSER_CHANNEL=chrome RESUME_DO_PDF_TEST_OUTPUT_DIR=/你的绝对路径/pdf-check npm run test:pdf -w @resume-do/pdf-worker
+```
+
+测试覆盖 59 套模板生成、多页照片内容与侧栏溢出拒绝。编写了测试用例不等于本机已通过；请以自己的执行结果及实际 PDF 检查为准。API 与 worker 的模板／渲染版本必须一致升级，不能只更新其中一个进程。
+
+## 11. 常见问题
+
+| 现象 | 排查方式 |
+| --- | --- |
+| `Port 8080 was already in use` | 已有 API 或其他服务占用端口；先确认占用进程，避免重复启动 |
+| `env: node: Bad CPU type in executable` | Node 架构与电脑不匹配，或终端仍使用旧 PATH；安装正确架构并新开终端 |
+| Java 提示源／目标版本不一致 | 检查项目 SDK、模块 SDK、编译目标、Maven JDK 是否都为 21 |
+| `[mysql-explain]` 查询 `performance_schema.user_variables_by_thread` 权限报错 | IDEA 的 RestfulBox → Java 工具 → MySQL Explain 取消“启用”，应用后重启后端；这是插件自动注入导致，无需给业务账号授予系统表权限。该开关是 IDEA 全局设置 |
+| `Access denied` / `Communications link failure` | 检查 MySQL 是否启动、用户授权、密码、端口及库名；API 和 worker 都要配置 |
+| 复制 `.env` 后仍使用旧密码 | API 和 worker 不自动读 `.env`；在当前终端加载，或在 IDEA 运行配置显式设置 |
+| `/api` 请求失败 | 检查后端是否启动；开发代理目标是否与 API 端口一致 |
+| PDF 一直“正在生成” | 检查 worker 是否单独启动、数据库是否与 API 一致，以及是否有 `claim failed` 日志 |
+| Playwright 找不到 executable | 安装 Chromium，或设置 `RESUME_DO_BROWSER_CHANNEL=chrome` 使用本机 Chrome |
+| PDF 显示完成但下载提示文件不存在 | 检查 API 和 worker 的 `RESUME_DO_STORAGE_DIR` 是否为同一绝对路径 |
+| 下载链接过期 | 默认有效期 10 分钟，重新创建导出任务 |
+| 提示正文／侧栏超高 | 手动拆分长段落、缩短侧栏或调整字号／行距，不会静默导出被裁切内容 |
+| 换模板后 API 报编号或版本不支持 | 确认 Java API 与 worker 都已用最新源码重新启动 |
+| 不同电脑的预览与 PDF 换行略有差异 | 当前使用系统字体；Mac 与 Linux 中文字体不同，正式部署需统一字体环境并验收 |
+
+macOS / Linux 可查看端口：
+
+```bash
+lsof -nP -iTCP:8080 -sTCP:LISTEN
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+Windows 可使用 `netstat -ano | findstr :8080`。不要直接强制结束所有 Java / Node 进程，以免影响其他项目。
+
+更详细的本地测试记录见 [本地验证记录](docs/ops/2026-10-28-resume-p0-local-verification.md)。需求与实现计划位于 [docs/superpowers](docs/superpowers)。

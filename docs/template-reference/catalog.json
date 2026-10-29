@@ -1,0 +1,540 @@
+{
+  "source": "https://www.qmjianli.com/cv/edit/?resumeId=26316NE49TEJXCHYL",
+  "capturedAt": "2026-10-28",
+  "count": 59,
+  "kind": "template-preview-reference",
+  "editableTemplatesImported": 0,
+  "templates": [
+    {
+      "referenceId": "1045",
+      "order": 1,
+      "preview": "images/1045.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1045.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1015",
+      "order": 2,
+      "preview": "images/1015.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1015.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1004",
+      "order": 3,
+      "preview": "images/1004.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1004.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1044",
+      "order": 4,
+      "preview": "images/1044.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1044.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1054",
+      "order": 5,
+      "preview": "images/1054.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1054.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1057",
+      "order": 6,
+      "preview": "images/1057.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1057.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1012",
+      "order": 7,
+      "preview": "images/1012.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1012.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1005",
+      "order": 8,
+      "preview": "images/1005.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1005.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1046",
+      "order": 9,
+      "preview": "images/1046.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1046.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1019",
+      "order": 10,
+      "preview": "images/1019.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1019.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1058",
+      "order": 11,
+      "preview": "images/1058.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1058.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1056",
+      "order": 12,
+      "preview": "images/1056.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1056.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1008",
+      "order": 13,
+      "preview": "images/1008.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1008.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1011",
+      "order": 14,
+      "preview": "images/1011.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1011.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1023",
+      "order": 15,
+      "preview": "images/1023.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1023.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1041",
+      "order": 16,
+      "preview": "images/1041.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1041.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1035",
+      "order": 17,
+      "preview": "images/1035.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1035.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1034",
+      "order": 18,
+      "preview": "images/1034.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1034.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1016",
+      "order": 19,
+      "preview": "images/1016.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1016.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1040",
+      "order": 20,
+      "preview": "images/1040.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1040.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1020",
+      "order": 21,
+      "preview": "images/1020.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1020.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1033",
+      "order": 22,
+      "preview": "images/1033.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1033.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1022",
+      "order": 23,
+      "preview": "images/1022.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1022.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1002",
+      "order": 24,
+      "preview": "images/1002.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1002.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1055",
+      "order": 25,
+      "preview": "images/1055.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1055.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1050",
+      "order": 26,
+      "preview": "images/1050.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1050.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1039",
+      "order": 27,
+      "preview": "images/1039.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1039.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1043",
+      "order": 28,
+      "preview": "images/1043.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1043.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1038",
+      "order": 29,
+      "preview": "images/1038.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1038.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1051",
+      "order": 30,
+      "preview": "images/1051.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1051.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1047",
+      "order": 31,
+      "preview": "images/1047.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1047.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1030",
+      "order": 32,
+      "preview": "images/1030.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1030.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1032",
+      "order": 33,
+      "preview": "images/1032.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1032.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1042",
+      "order": 34,
+      "preview": "images/1042.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1042.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1014",
+      "order": 35,
+      "preview": "images/1014.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1014.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1027",
+      "order": 36,
+      "preview": "images/1027.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1027.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1003",
+      "order": 37,
+      "preview": "images/1003.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1003.png",
+      "width": 820,
+      "height": 1128,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1053",
+      "order": 38,
+      "preview": "images/1053.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1053.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1037",
+      "order": 39,
+      "preview": "images/1037.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1037.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1048",
+      "order": 40,
+      "preview": "images/1048.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1048.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1025",
+      "order": 41,
+      "preview": "images/1025.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1025.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1021",
+      "order": 42,
+      "preview": "images/1021.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1021.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1036",
+      "order": 43,
+      "preview": "images/1036.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1036.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1006",
+      "order": 44,
+      "preview": "images/1006.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1006.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1007",
+      "order": 45,
+      "preview": "images/1007.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1007.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1029",
+      "order": 46,
+      "preview": "images/1029.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1029.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1049",
+      "order": 47,
+      "preview": "images/1049.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1049.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1031",
+      "order": 48,
+      "preview": "images/1031.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1031.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1013",
+      "order": 49,
+      "preview": "images/1013.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1013.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1024",
+      "order": 50,
+      "preview": "images/1024.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1024.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1028",
+      "order": 51,
+      "preview": "images/1028.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1028.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1001",
+      "order": 52,
+      "preview": "images/1001.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1001.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1018",
+      "order": 53,
+      "preview": "images/1018.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1018.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1052",
+      "order": 54,
+      "preview": "images/1052.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1052.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1026",
+      "order": 55,
+      "preview": "images/1026.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1026.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1009",
+      "order": 56,
+      "preview": "images/1009.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1009.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1000",
+      "order": 57,
+      "preview": "images/1000.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1000.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1010",
+      "order": 58,
+      "preview": "images/1010.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1010.png",
+      "width": 820,
+      "height": 1150,
+      "status": "reference-only"
+    },
+    {
+      "referenceId": "1017",
+      "order": 59,
+      "preview": "images/1017.png",
+      "source": "https://pic.qmjianli.com/img/resume/template/online/1017.png",
+      "width": 820,
+      "height": 1160,
+      "status": "reference-only"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "resume-do",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/web",
+    "apps/pdf-worker",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @resume-do/web",
+    "dev:worker": "npm run dev -w @resume-do/pdf-worker",
+    "build": "npm run build -w @resume-do/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

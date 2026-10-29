@@ -1,0 +1,80 @@
+name: resume-do
+
+services:
+  resume-db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${RESUME_DO_MYSQL_ROOT_PASSWORD:?set RESUME_DO_MYSQL_ROOT_PASSWORD in deploy/.env}
+      MYSQL_DATABASE: resume_do
+      MYSQL_USER: resume_do
+      MYSQL_PASSWORD: ${RESUME_DO_DB_PASSWORD:?set RESUME_DO_DB_PASSWORD in deploy/.env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - resume_do_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  resume-api:
+    image: resume-api:local
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      RESUME_DO_DB_HOST: resume-db
+      RESUME_DO_DB_NAME: resume_do
+      RESUME_DO_DB_USER: resume_do
+      RESUME_DO_DB_PASSWORD: ${RESUME_DO_DB_PASSWORD:?set RESUME_DO_DB_PASSWORD in deploy/.env}
+      RESUME_DO_STORAGE_DIR: /data
+      RESUME_DO_API_PORT: 8080
+    volumes:
+      - resume_do_files:/data
+    depends_on:
+      resume-db:
+        condition: service_healthy
+    expose:
+      - '8080'
+
+  resume-worker:
+    image: resume-worker:local
+    build:
+      context: ..
+      dockerfile: deploy/worker.Dockerfile
+    restart: unless-stopped
+    environment:
+      RESUME_DO_DB_HOST: resume-db
+      RESUME_DO_DB_NAME: resume_do
+      RESUME_DO_DB_USER: resume_do
+      RESUME_DO_DB_PASSWORD: ${RESUME_DO_DB_PASSWORD:?set RESUME_DO_DB_PASSWORD in deploy/.env}
+      RESUME_DO_STORAGE_DIR: /data
+      RESUME_DO_DOWNLOAD_TTL_MINUTES: 10
+    volumes:
+      - resume_do_files:/data
+    depends_on:
+      resume-db:
+        condition: service_healthy
+    shm_size: 512mb
+    mem_limit: 1g
+
+  resume-web:
+    image: resume-web:local
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    restart: unless-stopped
+    ports:
+      - '${RESUME_DO_WEB_PORT:-8080}:80'
+    depends_on:
+      - resume-api
+
+volumes:
+  resume_do_mysql_data:
+    name: resume_do_mysql_data
+  resume_do_files:
+    name: resume_do_files

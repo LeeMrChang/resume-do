@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+**/dist
+apps/api/target
+data
+.git
+.gitignore
+*.log
+.DS_Store

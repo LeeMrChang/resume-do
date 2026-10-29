@@ -1,0 +1,23 @@
+node_modules/
+dist/
+target/
+data/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.idea/
+.vscode/
+playwright-report/
+test-results/
+apps/pdf-worker/.cache/
+
+__pycache__/
+*.pyc
+
+# 本机 AI 工具配置与临时模板打包文件
+.qoder/
+docs/template-reference*.zip
+docs/zinLadqm
+docs/ziJUU7QU

@@ -1,0 +1,17 @@
+全民简历模板参考图库
+
+用浏览器打开 index.html，可离线查看59套参考图，按编号搜索并导出选型清单。
+images/：59张原站预览图。
+catalog.json：每张图的原始编号、来源URL、尺寸及下载顺序。
+
+当前状态：下载完成的是预览参考图，不是可编辑模板源码。
+应用内可编辑模板仍为 clean 和 classic 两套，本次没有修改业务代码或后端服务。
+
+接入位置：
+packages/schema/src/index.ts：templateId校验。
+packages/templates/src/render.ts 与 styles.ts：渲染与样式。
+apps/web/src/Dialogs.tsx：模板选择器。
+apps/api/src/main/java/com/resume/resume/ResumeValidator.java：服务端模板白名单。
+
+单栏模板可在现有布局上扩展；双栏模板需要额外设计分区及分页测量。
+新增模板应验证预览、实际PDF、长文本分页和切换后数据保留。

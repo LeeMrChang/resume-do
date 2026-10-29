@@ -1,0 +1,19 @@
+
+${AnsiColor.BRIGHT_CYAN}       .------------------------------------------.
+       |  .--------.    ${AnsiStyle.BOLD}${AnsiColor.BRIGHT_GREEN}R E S U M E  D O${AnsiStyle.NORMAL}${AnsiColor.BRIGHT_CYAN}          |
+       |  |  .--.  |    ----------------------    |
+       |  | (o_o)  |    Name   /  Profile         |
+       |  | /|  |\ |    ----------------------    |
+       |  '--------'                              |
+       |                                          |
+       |  ${AnsiColor.BRIGHT_YELLOW}EXPERIENCE${AnsiColor.BRIGHT_CYAN}    ======================    |
+       |                ----------------------    |
+       |  ${AnsiColor.BRIGHT_MAGENTA}EDUCATION${AnsiColor.BRIGHT_CYAN}     ======================    |
+       |                ----------------------    |
+       |  ${AnsiColor.BRIGHT_GREEN}SKILLS${AnsiColor.BRIGHT_CYAN}        ======================    |
+       '------------------------------------------'
+
+${AnsiStyle.BOLD}${AnsiColor.BRIGHT_GREEN}             Resume Do · 简历工作台${AnsiStyle.NORMAL}
+${AnsiColor.BRIGHT_CYAN}             EDIT  /  PREVIEW  /  EXPORT
+${AnsiColor.BRIGHT_YELLOW}                 Spring Boot ${spring-boot.version}
+${AnsiColor.DEFAULT}
