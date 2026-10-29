@@ -1,0 +1,9 @@
+# 部署配置：必须注入数据库密码，不能回退为本地示例密码。
+spring:
+  datasource:
+    url: jdbc:mysql://${RESUME_DO_DB_HOST:127.0.0.1}:${RESUME_DO_DB_PORT:3306}/${RESUME_DO_DB_NAME:resume_do}?useUnicode=true&characterEncoding=utf8&allowPublicKeyRetrieval=true&useSSL=false&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: ${RESUME_DO_DB_USER:resume_do}
+    password: ${RESUME_DO_DB_PASSWORD}
+
+app:
+  storage-dir: ${RESUME_DO_STORAGE_DIR:/data}

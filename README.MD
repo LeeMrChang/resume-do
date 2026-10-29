@@ -128,7 +128,19 @@ mysql -h 127.0.0.1 -P 3306 -u resume_do -p resume_do
 
 只需要创建数据库和用户。后端首次启动时，Flyway 自动执行 `apps/api/src/main/resources/db/migration` 下的迁移：V1 创建用户、简历和导出任务，V2 新增 `import_jobs`。不要手动重复执行迁移 SQL。已有部署升级前先停止 API 和 worker，备份数据库与数据目录，再启动新版执行 V2；不要改写已有 V1。
 
-## 6. 配置环境变量
+## 6. 配置文件与环境变量
+
+后端按 Spring profile 拆分配置：
+
+| 文件 | 用途 | 提交规则 |
+| --- | --- | --- |
+| `apps/api/src/main/resources/application.yml` | 公共配置；未指定 profile 时使用 `prod` | 可提交 |
+| `apps/api/src/main/resources/application-local.yml` | 本地数据库默认值、相对数据目录 | 可提交无真实凭据的示例；真实密码用环境变量 |
+| `apps/api/src/main/resources/application-prod.yml` | 部署数据库配置、默认 `/data` 目录 | 可提交；数据库密码必须从 `RESUME_DO_DB_PASSWORD` 注入 |
+
+本地显式启用 `local`（第 7 节命令与共享 IDEA 配置已设置），Docker Compose 显式启用 `prod`。profile 文件会随 JAR 打包，但只有选中的 profile 生效；不要将真实密码、密钥或私人连接地址写入这些受 Git 跟踪的文件。也不要通过 `spring.profiles.active: local` 写死公共配置。
+
+API 与 PDF worker 是独立进程：worker 不读取 Java YAML，仍使用根 `.env`，数据库和数据目录必须与 API 一致。下面的配置供两者共用。
 
 在项目根目录复制配置示例：
 
@@ -167,10 +179,10 @@ Vite 会读取根目录 `.env` 中的 `RESUME_DO_WEB_PORT` 和 `RESUME_DO_API_PO
 
 | 配置 | 作用与默认值 |
 | --- | --- |
-| `RESUME_DO_DB_HOST / PORT / NAME / USER / PASSWORD` | API、worker 共用的数据库配置；默认 127.0.0.1 / 3306 / resume_do / resume_do / change_me |
+| `RESUME_DO_DB_HOST / PORT / NAME / USER / PASSWORD` | API、worker 共用的数据库配置；本地默认 127.0.0.1 / 3306 / resume_do / resume_do / change_me；API 的 prod 不提供密码默认值 |
 | `RESUME_DO_API_PORT` | 后端端口，8080；同时决定 Vite 代理目标 |
 | `RESUME_DO_WEB_PORT` | 本地 Vite 端口 5173；Docker 示例对外端口 8080 |
-| `RESUME_DO_STORAGE_DIR` | API 和 worker 的同一个 PDF 目录，默认相对各自应用目录 `../../data` |
+| `RESUME_DO_STORAGE_DIR` | API 和 worker 的同一数据目录；local API／worker 默认相对各自应用目录 `../../data`，prod API 默认 `/data`，推荐显式指定同一绝对路径 |
 | `RESUME_DO_BROWSER_CHANNEL` | 留空使用 Playwright Chromium，`chrome` 使用本机 Chrome |
 | `RESUME_DO_DOWNLOAD_TTL_MINUTES` | 下载有效期，10 分钟 |
 | `RESUME_DO_POLL_MS / RENDER_TIMEOUT_MS` | worker 轮询间隔 800ms / 生成超时 30000ms |
@@ -217,7 +229,7 @@ npm run dev
 
 ```bash
 cd apps/api
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
 也可以打包后运行：
@@ -225,7 +237,7 @@ mvn spring-boot:run
 ```bash
 # 在 apps/api 目录执行
 mvn -DskipTests package
-java -jar target/resume-api-0.1.0.jar
+java -jar target/resume-api-0.1.0.jar --spring.profiles.active=local
 ```
 
 看到 `Started ResumeDoApplication` 和 `Tomcat started on port 8080` 表示启动成功。
@@ -307,6 +319,7 @@ npm run dev:worker
 - **语言级别、Java 编译目标**：设为 21，避免“源发行版 21 需要目标发行版 21”。
 - **Maven Importer / Runner JDK**：选择 JDK 21。
 - **启动类**：`apps/api/src/main/java/com/resumedo/ResumeDoApplication.java`。
+- **程序参数**：`--spring.profiles.active=local`（共享运行配置已设置）；PowerShell 与 Bash/Zsh 均可使用上述参数。
 - **运行配置环境变量**：填写第 6 节的 `RESUME_DO_DB_*`；`RESUME_DO_STORAGE_DIR` 建议填写根目录 `data` 的绝对路径。
 - **工作目录**：建议设为 `apps/api`。如使用相对存储路径，目录不同会改变 `../../data` 的含义。
 - **Node.js 解释器**：选择 Node 22。IDEA 旧终端不会自动刷新 PATH，切换 Node 后关闭旧终端标签，再新开终端检查 `node -v`。
@@ -333,6 +346,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f resume-api 
 
 访问 **http://localhost:8080/**，或 `deploy/.env` 指定的 `RESUME_DO_WEB_PORT`。
 
+- API 显式使用 `SPRING_PROFILES_ACTIVE=prod`；这是 Spring 标准变量。线上直接运行 JAR 时可传 `--spring.profiles.active=prod`，并注入实际数据库密码和共享数据目录。
 - Compose 项目名为 `resume-do`，服务名为 `resume-db`、`resume-api`、`resume-worker`、`resume-web`。
 - 本地与容器数据库默认均为 `resume_do`，账号同名。MySQL 镜像的 `MYSQL_*` 键是镜像标准接口，由 Compose 从项目的 `RESUME_DO_*` 变量传入。
 - MySQL 卷为 `resume_do_mysql_data`；API 与 worker 共用 `resume_do_files` 卷中的 `/data`。

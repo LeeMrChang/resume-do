@@ -27,6 +27,7 @@ services:
       dockerfile: deploy/api.Dockerfile
     restart: unless-stopped
     environment:
+      SPRING_PROFILES_ACTIVE: prod
       RESUME_DO_DB_HOST: resume-db
       RESUME_DO_DB_NAME: resume_do
       RESUME_DO_DB_USER: resume_do
