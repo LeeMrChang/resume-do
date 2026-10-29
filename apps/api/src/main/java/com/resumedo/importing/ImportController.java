@@ -15,11 +15,21 @@ import org.springframework.web.multipart.MultipartFile;
 public class ImportController {
     private final ImportService service;
     private final AuthService auth;
-    public ImportController(ImportService service, AuthService auth) { this.service = service; this.auth = auth; }
+    public ImportController(ImportService service, AuthService auth, EditableImportService editable) { this.service = service; this.auth = auth; this.editable=editable; }
     private long owner(Authentication user) { return auth.current(user.getName()).id(); }
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.ACCEPTED)
     public ImportService.Response upload(@RequestParam("file") MultipartFile file, Authentication user) { return service.upload(owner(user), file); }
+    private final EditableImportService editable;
+    @PostMapping(value="/direct", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public ResumeDtos.ResumeResponse direct(@RequestParam("file") MultipartFile file, Authentication user) {
+        return editable.create(owner(user),file);
+    }
+    @PostMapping("/from-original/{id}")
+    public ResumeDtos.ResumeResponse openLegacyEditor(@PathVariable String id, Authentication user) {
+        return editable.openLegacyEditor(owner(user),id);
+    }
     @GetMapping public List<ImportService.Response> list(Authentication user) { return service.list(owner(user)); }
     @GetMapping("/{id}") public ImportService.Response get(@PathVariable String id, Authentication user) { return service.get(owner(user), id); }
     @PatchMapping("/{id}") public ImportService.Response save(@PathVariable String id, @RequestBody ImportService.SaveRequest request, Authentication user) { return service.save(owner(user), id, request); }

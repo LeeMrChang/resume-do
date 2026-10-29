@@ -24,7 +24,8 @@ public class ImportMapper {
         result.put("title", filename.replaceFirst("(?i)\\.(pdf|docx)$", "").substring(0, Math.min(100, filename.replaceFirst("(?i)\\.(pdf|docx)$", "").length())));
         var doc = result.putObject("document"); doc.put("schemaVersion", 1);
         var basic = doc.putObject("basic");
-        for (String key : List.of("name", "gender", "city", "phone", "email", "experienceYears", "photo")) basic.put(key, "");
+        for (String key : List.of("name", "gender", "city", "phone", "email", "experienceYears", "photo", "birthMonth", "age", "nativePlace", "ethnicity", "maritalStatus", "politicalStatus", "height", "weight")) basic.put(key, "");
+        basic.put("showPhoto", true); basic.putArray("customFields");
         var intent = doc.putObject("intent");
         for (String key : List.of("role", "city", "salary", "arrival")) intent.put(key, "");
         var sections = doc.putArray("sections");
@@ -48,6 +49,11 @@ public class ImportMapper {
                 if (line.replaceAll("\\s+", "").equals(basic.path("name").asText())) continue;
                 line = headerFields(line, basic, intent);
                 if (line.isEmpty()) continue;
+                var pair=Pattern.compile("^([^:：]{1,30})[:：]\\s*([^:：]{1,100})$").matcher(line);
+                if(pair.matches() && basic.withArray("customFields").size()<20) {
+                    basic.withArray("customFields").addObject().put("label",pair.group(1).strip()).put("value",pair.group(2).strip());
+                    continue;
+                }
             }
             if (current.equals("custom") || current.equals("basic")) {
                 var email = Pattern.compile("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,63}").matcher(line);
@@ -69,7 +75,7 @@ public class ImportMapper {
                 for (String line : grouped.get(id)) {
                     Matcher range = RANGE.matcher(line);
                     boolean dated = range.find();
-                    if (active == null || (dated && !active.path("body").asText().isEmpty())) {
+                    if (active == null || (dated && (!active.path("startMonth").asText().isEmpty() || !active.path("body").asText().isEmpty()))) {
                         if (items.size() >= 30) { pending.add(line); continue; }
                         active = item(items);
                         if (dated) {
@@ -81,6 +87,13 @@ public class ImportMapper {
                             if (fields[0].length() <= 100) active.put("title", fields[0]);
                             if (fields.length > 1 && fields[1].length() <= 100) active.put("role", fields[1]);
                         }
+                    }
+                    // The dated header is already represented by title/role/date fields.
+                    // Preserve it in the body only when extraction did not fit the schema.
+                    if (dated && !active.path("title").asText().isBlank()) {
+                        String rest=(line.substring(0,range.start())+" "+line.substring(range.end())).strip();
+                        String[] extracted=rest.split("\\s*[|｜\\t]\\s*|\\s{2,}",2);
+                        if (extracted[0].length()<=100 && (extracted.length<2 || extracted[1].length()<=100)) continue;
                     }
                     if (active.path("body").asText().length() + html(line).length() > 19_000) { pending.add(line); continue; }
                     active.put("body", active.path("body").asText() + html(line));
@@ -112,7 +125,7 @@ public class ImportMapper {
     // PDF glyph positioning often inserts spaces inside Chinese labels. Split
     // multiple columns by labels, keeping every unsupported or invalid value.
     private String headerFields(String line, ObjectNode basic, ObjectNode intent) {
-        String labels = "姓名|性别|城市|所在城市|联系电话|手机|电话|邮箱|电子邮箱|工作年限|意向职位|求职岗位|意向城市|期望薪资|到岗时间|年龄|籍贯|求职意向";
+        String labels = "姓名|性别|城市|所在城市|联系电话|手机|电话|邮箱|电子邮箱|工作年限|意向职位|求职岗位|意向城市|期望薪资|到岗时间|年龄|籍贯|求职意向|出生年月|出生日期|民族|婚姻状况|政治面貌|身高|体重";
         String spaced = Arrays.stream(labels.split("\\|"))
                 .map(label -> String.join("\\s*", label.split("")))
                 .reduce((a, b) -> a + "|" + b).orElseThrow();
@@ -133,11 +146,22 @@ public class ImportMapper {
     }
 
     private boolean field(String line, ObjectNode basic, ObjectNode intent) {
-        var matcher = Pattern.compile("^(姓名|性别|城市|所在城市|联系电话|手机|电话|邮箱|电子邮箱|工作年限|意向职位|求职岗位|意向城市|期望薪资|到岗时间)\\s*[:：]\\s*(.+)$").matcher(line);
+        var matcher = Pattern.compile("^(姓名|性别|城市|所在城市|联系电话|手机|电话|邮箱|电子邮箱|工作年限|意向职位|求职岗位|意向城市|期望薪资|到岗时间|年龄|籍贯|求职意向|出生年月|出生日期|民族|婚姻状况|政治面貌|身高|体重)\\s*[:：]\\s*(.+)$").matcher(line);
         if (!matcher.matches()) return false;
         String label = matcher.group(1), value = matcher.group(2).strip();
         if (value.matches(".*(?:姓名|电话|手机|邮箱|城市|职位)\\s*[:：].*")) return false;
+        if(label.equals("求职意向")) {
+            String[] parts=value.split("\\s{2,}|[|｜]",3);
+            if(parts[0].length()>100) return false;
+            intent.put("role",parts[0]);
+            if(parts.length>1 && parts[1].length()<=50) intent.put("city",parts[1]);
+            if(parts.length>2 && parts[2].length()<=50) intent.put("arrival",parts[2]);
+            return parts.length<=3 && (parts.length<2 || parts[1].length()<=50) && (parts.length<3 || parts[2].length()<=50);
+        }
         String key = switch (label) {
+            case "出生年月", "出生日期" -> "birthMonth"; case "年龄" -> "age"; case "籍贯" -> "nativePlace";
+            case "民族" -> "ethnicity"; case "婚姻状况" -> "maritalStatus"; case "政治面貌" -> "politicalStatus";
+            case "身高" -> "height"; case "体重" -> "weight";
             case "姓名" -> "name"; case "性别" -> "gender"; case "城市", "所在城市", "意向城市" -> "city";
             case "联系电话", "手机", "电话" -> "phone"; case "邮箱", "电子邮箱" -> "email"; case "工作年限" -> "experienceYears";
             case "意向职位", "求职岗位" -> "role"; case "期望薪资" -> "salary"; default -> "arrival";
@@ -146,6 +170,11 @@ public class ImportMapper {
         int max = switch (key) { case "name", "city", "salary", "arrival" -> 50; case "gender" -> 10; case "phone", "experienceYears" -> 30; case "email" -> 120; default -> 100; };
         if (value.length() > max || !target.path(key).asText().isEmpty()) return false;
         if (key.equals("email") && !value.matches("[^@\\s]+@[^@\\s]+\\.[^@\\s]+")) return false;
+        if(key.equals("birthMonth")) {
+            var birth=Pattern.compile("^(\\d{4})[年./-](\\d{1,2})(?:月|[./-]\\d{1,2}日?)?$").matcher(value);
+            if(!birth.matches() || Integer.parseInt(birth.group(2))<1 || Integer.parseInt(birth.group(2))>12) return false;
+            value=month(birth.group(1),birth.group(2));
+        }
         target.put(key, value); return true;
     }
     private ObjectNode item(ArrayNode items) {

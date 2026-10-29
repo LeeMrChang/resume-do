@@ -37,7 +37,7 @@ export function validateImportDraft(draft: ImportDraft): void {
     const path = issue.path;
     const section = path[0] === 'sections' && typeof path[1] === 'number' ? draft.document.sections[path[1]] : undefined;
     const entry = path[2] === 'items' && typeof path[3] === 'number' ? ` 第 ${path[3] + 1} 条` : '';
-    const fields: Record<string, string> = { name: '姓名', phone: '电话', email: '邮箱', startMonth: '开始年月', endMonth: '结束年月', body: '正文', title: '名称', role: '职位／角色' };
+    const fields: Record<string, string> = { birthMonth: '出生年月', nativePlace: '籍贯', ethnicity: '民族', maritalStatus: '婚姻状况', politicalStatus: '政治面貌', height: '身高', weight: '体重', showPhoto: '展示照片', name: '姓名', phone: '电话', email: '邮箱', startMonth: '开始年月', endMonth: '结束年月', body: '正文', title: '名称', role: '职位／角色' };
     const field = fields[String(path.at(-1))] || String(path.at(-1) ?? '内容');
     throw new Error(`${section?.title || '简历'}${entry} · ${field}：${issue.message}`);
   }

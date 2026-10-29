@@ -21,3 +21,6 @@ __pycache__/
 docs/template-reference*.zip
 docs/zinLadqm
 docs/ziJUU7QU
+
+# Generated local PDF.js resources (copied from the locked dependency)
+apps/web/public/pdfjs/

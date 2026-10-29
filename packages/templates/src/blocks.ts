@@ -1,5 +1,5 @@
 import type { ResumeDocument, ResumeRecordItem, ResumeSection } from '@resume-do/schema';
-import { stripTags } from '@resume-do/schema';
+import { stripTags, ageFromBirthMonth } from '@resume-do/schema';
 import { getTemplateSpec } from './catalog';
 import { escapeHtml, richBlocks } from './rich';
 import type { RenderInput, ResumeBlock } from './types';
@@ -30,13 +30,20 @@ function headerBlock(input: RenderInput): ResumeBlock {
   const metaKeys: ContactIcon[] = ['gender', 'city', 'experienceYears', 'phone', 'email'];
   const metaItems = metaKeys.filter(key => basic[key]).map(key => ({ key, value: basic[key] }));
   const spec = getTemplateSpec(appearance.templateId);
-  const showPhoto = spec.photo !== false;
+  const showPhoto = spec.photo !== false && basic.showPhoto !== false;
   const name = basic.name || '你的姓名';
   const initial = Array.from(name)[0] ?? '简';
   const photo = basic.photo
     ? `<img src="${escapeHtml(basic.photo)}" alt="${escapeHtml(name)}" />`
     : `<span class="r-initial">${escapeHtml(initial)}</span>`;
 
+  const extras: [string, string | undefined][] = [
+    ['出生年月', basic.birthMonth], ['年龄', basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age],
+    ['籍贯', basic.nativePlace], ['民族', basic.ethnicity], ['婚姻状况', basic.maritalStatus],
+    ['政治面貌', basic.politicalStatus], ['身高', basic.height], ['体重', basic.weight],
+    ...(basic.customFields ?? []).map(pair => [pair.label, pair.value] as [string, string]),
+  ];
+  const extraLine = extras.filter(([,value]) => value).map(([label,value]) => `<span class="r-contact">${escapeHtml(label)}：${escapeHtml(value ?? '')}</span>`).join('');
   const html = [
     '<div class="r-intro">',
     showPhoto ? `<div class="r-intro-photo">${photo}</div>` : '',
@@ -46,6 +53,7 @@ function headerBlock(input: RenderInput): ResumeBlock {
     metaItems.length
       ? `<div class="r-meta">${metaItems.map(({ key, value }) => `<span class="r-contact">${contactIcon(key)}<span>${escapeHtml(value)}</span></span>`).join('')}</div>`
       : '',
+    extraLine ? `<div class="r-meta">${extraLine}</div>` : '',
     '</div>',
     '</div>',
   ].join('');
@@ -55,7 +63,7 @@ function headerBlock(input: RenderInput): ResumeBlock {
     kind: 'header',
     keepWithNext: false,
     html,
-    plainText: [name, intentLine, ...metaItems.map(item => item.value)].filter(Boolean).join(' '),
+    plainText: [name, intentLine, ...metaItems.map(item => item.value), ...extras.map(([, value]) => value)].filter(Boolean).join(' '),
   };
 }
 

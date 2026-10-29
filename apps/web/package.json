@@ -8,11 +8,14 @@
     "build": "tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json && tsc -p tests/tsconfig.json",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "predev": "node ../../scripts/copy-pdf-assets.mjs",
+    "prebuild": "node ../../scripts/copy-pdf-assets.mjs"
   },
   "dependencies": {
     "@resume-do/schema": "0.1.0",
     "@resume-do/templates": "0.1.0",
+    "pdfjs-dist": "^5.4.624",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

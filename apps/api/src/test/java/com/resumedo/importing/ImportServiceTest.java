@@ -18,13 +18,14 @@ class ImportServiceTest {
     final ImportRepository jobs = mock(ImportRepository.class);
     final ResumeService resumes = mock(ResumeService.class);
     final ObjectMapper json = new ObjectMapper();
+    final EditableImportService editable = mock(EditableImportService.class);
     ImportService service;
     ImportRepository.Job job(String id, long owner, String status, String resumeId) {
-        return new ImportRepository.Job(id, owner, "resume.docx", null, status, "原文",
+        return new ImportRepository.Job(id, owner, "resume.docx", "a".repeat(32) + ".docx", status, "原文",
             new ImportMapper(json).draft("姓名：测试", "resume.docx").toString(), 3, true, null, null, resumeId,
             Instant.now().plusSeconds(3600), Instant.now());
     }
-    @BeforeEach void setup() { service = new ImportService(jobs, new ImportParser(), new ImportMapper(json), new ResumeValidator(), resumes, json, storage.toString()); }
+    @BeforeEach void setup() { service = new ImportService(jobs, new ImportParser(), new ImportMapper(json), new ResumeValidator(), resumes, json, storage.toString(), editable, new ImportPhotoExtractor()); }
     @AfterEach void close() { service.close(); }
     @Test void noResumeIsCreatedBySavingOrCancellingAnImport() {
         var job = job("one", 1, "ready", null);
@@ -40,23 +41,23 @@ class ImportServiceTest {
         var confirmed = job("one", 1, "confirmed", "new-resume");
         var response = new ResumeDtos.ResumeResponse("new-resume", "resume", 0, json.createObjectNode(), json.createObjectNode(), Instant.now(), Instant.now());
         when(jobs.find(1, "one", true)).thenReturn(Optional.of(ready), Optional.of(confirmed));
-        when(resumes.create(eq(1L), any())).thenReturn(response);
+        when(editable.confirm(eq(1L), any(), any())).thenReturn(response);
         when(resumes.get(1, "new-resume")).thenReturn(response);
         assertThat(service.confirm(1, "one", new ImportService.ConfirmRequest(3)).id()).isEqualTo("new-resume");
         assertThat(service.confirm(1, "one", new ImportService.ConfirmRequest(3)).id()).isEqualTo("new-resume");
-        verify(resumes, times(1)).create(eq(1L), any());
+        verify(editable, times(1)).confirm(eq(1L), any(), any());
         verify(jobs).confirmed("one", "new-resume");
         verify(resumes, never()).update(anyLong(), anyString(), any());
     }
     @Test void differentImportsCreateDistinctResumesInsteadOfMerging() {
         when(jobs.find(1, "one", true)).thenReturn(Optional.of(job("one", 1, "ready", null)));
         when(jobs.find(1, "two", true)).thenReturn(Optional.of(job("two", 1, "ready", null)));
-        when(resumes.create(eq(1L), any())).thenReturn(
+        when(editable.confirm(eq(1L), any(), any())).thenReturn(
             new ResumeDtos.ResumeResponse("a", "resume", 0, json.createObjectNode(), json.createObjectNode(), Instant.now(), Instant.now()),
             new ResumeDtos.ResumeResponse("b", "resume", 0, json.createObjectNode(), json.createObjectNode(), Instant.now(), Instant.now()));
         assertThat(service.confirm(1, "one", new ImportService.ConfirmRequest(3)).id()).isEqualTo("a");
         assertThat(service.confirm(1, "two", new ImportService.ConfirmRequest(3)).id()).isEqualTo("b");
-        verify(resumes, times(2)).create(eq(1L), any());
+        verify(editable, times(2)).confirm(eq(1L), any(), any());
     }
     @Test void crossOwnerAndStaleDraftCannotConfirmOrCreateAResume() {
         when(jobs.find(2, "one", true)).thenReturn(Optional.empty());
@@ -102,7 +103,7 @@ class ImportServiceTest {
         var original = job(id, 1, "ready", null);
         var withFile = new ImportRepository.Job(id, 1, "x.pdf", key, "ready", original.source(), original.draft(), 3, true, null, null, null, original.expiresAt(), original.updatedAt());
         when(jobs.find(1, id, true)).thenReturn(Optional.of(withFile));
-        when(resumes.create(eq(1L), any())).thenReturn(new ResumeDtos.ResumeResponse("new", "x", 0, json.createObjectNode(), json.createObjectNode(), Instant.now(), Instant.now()));
+        when(editable.confirm(eq(1L), any(), any())).thenReturn(new ResumeDtos.ResumeResponse("new", "x", 0, json.createObjectNode(), json.createObjectNode(), Instant.now(), Instant.now()));
         org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
         try {
             service.confirm(1, id, new ImportService.ConfirmRequest(3));

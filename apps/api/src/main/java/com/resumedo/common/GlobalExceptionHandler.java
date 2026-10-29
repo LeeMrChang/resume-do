@@ -45,8 +45,10 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
-    public ResponseEntity<ApiError> handleUploadTooLarge(Exception exception) {
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+    public ResponseEntity<ApiError> handleUploadTooLarge(Exception exception, jakarta.servlet.http.HttpServletRequest request) {
+        HttpStatus status = ("/api/resumes/originals".equals(request.getRequestURI()) || "/api/imports/direct".equals(request.getRequestURI()))
+                ? HttpStatus.BAD_REQUEST : HttpStatus.PAYLOAD_TOO_LARGE;
+        return ResponseEntity.status(status)
                 .body(new ApiError("FILE_TOO_LARGE", "文件不能超过 20MB", Map.of()));
     }
 

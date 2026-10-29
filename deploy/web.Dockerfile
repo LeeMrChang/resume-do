@@ -9,6 +9,7 @@ RUN npm ci --workspaces --include-workspace-root
 
 COPY packages packages
 COPY apps/web apps/web
+COPY scripts/copy-pdf-assets.mjs scripts/copy-pdf-assets.mjs
 RUN npm run build -w @resume-do/web
 
 FROM nginx:1.27-alpine

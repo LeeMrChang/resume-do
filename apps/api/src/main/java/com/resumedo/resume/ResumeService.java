@@ -38,7 +38,7 @@ public class ResumeService {
                         row.title(),
                         row.revision(),
                         row.templateId(),
-                        row.updatedAt()))
+                        row.updatedAt(), row.kind(), row.source()))
                 .toList();
     }
 
@@ -51,6 +51,7 @@ public class ResumeService {
     public ResumeResponse create(long ownerId, CreateRequest request) {
         String title = normalizeTitle(request.title());
         ResumeValidator.Validated validated = validator.validate(request.document(), request.appearance());
+        repository.requireCapacity(ownerId);
         String publicId = Ids.newPublicId();
         repository.insert(
                 publicId,
@@ -69,6 +70,8 @@ public class ResumeService {
         ResumeRow current = repository.find(ownerId, publicId)
                 .orElseThrow(() -> ApiException.notFound("简历不存在"));
 
+        if ("original".equals(current.kind())) throw ApiException.conflict(
+            "ORIGINAL_RESUME_READ_ONLY", "原件简历不支持编辑", Map.of());
         if (request.clientMutationId().equals(current.lastMutationId())) {
             return toResponse(current);
         }
@@ -126,7 +129,7 @@ public class ResumeService {
                     objectMapper.readTree(row.documentJson()),
                     objectMapper.readTree(row.appearanceJson()),
                     row.createdAt(),
-                    row.updatedAt());
+                    row.updatedAt(), row.kind(), row.source());
         } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
             throw new IllegalStateException("Stored resume JSON is invalid", exception);
         }

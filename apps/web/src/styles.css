@@ -1102,3 +1102,20 @@ button.dot:hover:not(:disabled) {
 .import-visible input { width: auto; }
 @media (max-width: 760px) { .import-columns, .import-grid { grid-template-columns: 1fr; } }
 .topbar select[aria-label='切换简历'] { max-width: 160px; width: auto; }
+
+.original-import { display: inline-flex; align-items: center; gap: 8px; position: relative; }
+.original-import button { white-space: nowrap; }
+.original-shell .topbar { height: auto; min-height: 68px; flex-wrap: wrap; padding: 12px 20px; }
+.original-shell .topbar .logo { font-size: 18px; }
+.original-shell .topbar > button, .original-download { flex-shrink: 0; white-space: nowrap; }
+.original-shell .topbar > select { width: auto; max-width: 260px; flex: 0 1 260px; }
+.original-action-error { color: #a32828; max-width: 340px; font-size: 12px; }
+.original-download { display: inline-block; text-decoration: none; padding: 7px 13px; border-radius: 6px; background: var(--brand); color: white; }
+.original-view { width: min(100%, 1000px); margin: 0 auto; padding: 24px 20px 60px; min-height: 0; flex: 1; overflow-y: auto; }
+.original-info { padding: 16px; margin-bottom: 24px; border-radius: 8px; background: #eef5f2; }
+.original-info p { color: #53655d; font-size: 13px; margin: 8px 0 0; }
+.original-page { margin: 0 0 24px; }
+.original-page-label { padding: 10px 0; text-align: center; color: #53655d; }
+.original-canvas-host { width: 100%; background: white; box-shadow: 0 2px 12px #0002; }
+.original-canvas-host canvas { display: block; max-width: 100%; }
+.original-empty { padding: 60px 24px; text-align: center; }

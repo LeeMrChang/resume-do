@@ -1,0 +1,211 @@
+{
+  "document": {
+    "schemaVersion": 1,
+    "basic": {
+      "name": "",
+      "gender": "",
+      "city": "",
+      "phone": "",
+      "email": "",
+      "experienceYears": "",
+      "photo": "",
+      "birthMonth": "",
+      "age": "",
+      "nativePlace": "",
+      "ethnicity": "",
+      "maritalStatus": "",
+      "politicalStatus": "",
+      "height": "",
+      "weight": "",
+      "showPhoto": true,
+      "customFields": []
+    },
+    "intent": {
+      "role": "",
+      "city": "",
+      "salary": "",
+      "arrival": ""
+    },
+    "sections": [
+      {
+        "id": "education",
+        "type": "records",
+        "title": "教育背景",
+        "visible": true,
+        "items": [
+          {
+            "id": "item-a5b972b4eefe44239d2c",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "work",
+        "type": "records",
+        "title": "工作经验",
+        "visible": true,
+        "items": [
+          {
+            "id": "item-d73602648e6d4f3ab927",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "skills",
+        "type": "rich",
+        "title": "专业技能",
+        "visible": true,
+        "items": [
+          {
+            "id": "body-3a43a6a8d06744a9861a",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "project",
+        "type": "records",
+        "title": "项目经验",
+        "visible": true,
+        "items": [
+          {
+            "id": "item-4c06288ac92544acb6eb",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "evaluation",
+        "type": "rich",
+        "title": "自我评价",
+        "visible": true,
+        "items": [
+          {
+            "id": "body-acc2850edd844936bf94",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "intern",
+        "type": "records",
+        "title": "实习经验",
+        "visible": false,
+        "items": [
+          {
+            "id": "item-a4f36b2821c947b2a9fe",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "campus",
+        "type": "records",
+        "title": "校园经历",
+        "visible": false,
+        "items": [
+          {
+            "id": "item-71d09b7b237d4945971f",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "honor",
+        "type": "rich",
+        "title": "荣誉证书",
+        "visible": false,
+        "items": [
+          {
+            "id": "body-ee020e3e63414e799755",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "hobby",
+        "type": "rich",
+        "title": "兴趣爱好",
+        "visible": false,
+        "items": [
+          {
+            "id": "body-e54bd8c7f1fe4b9f953d",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "custom",
+        "type": "rich",
+        "title": "自定义模块",
+        "visible": false,
+        "items": [
+          {
+            "id": "body-5d84f4aa013c470380e2",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      }
+    ]
+  },
+  "appearance": {
+    "templateId": "1045",
+    "fontId": "sans",
+    "fontSize": 14,
+    "lineHeight": 1.5,
+    "sectionGap": 18,
+    "pageMargin": 42,
+    "themeColor": "#1f5aa6"
+  }
+}

@@ -11,12 +11,15 @@ import {
   emptyRecordItem,
   emptyRichItem,
   stripTags,
+  ageFromBirthMonth,
 } from '@resume-do/schema';
 import { exportFilename } from '@resume-do/templates';
-import { api, ApiError, type ResumeResponse, type User } from './api';
+import { api, ApiError, type ResumeResponse, type ResumeSummary, type User } from './api';
 import Preview from './Preview';
 import RichEditor from './RichEditor';
-import ImportDialog from './ImportDialog';
+import OriginalResumeView from './OriginalResumeView';
+import OriginalImportButton from './OriginalImportButton';
+import { resumeViewKind, confirmResumeDelete } from './originalResume';
 import {
   AppearanceDialog,
   ConflictDialog,
@@ -77,8 +80,12 @@ function Field({
 
 export default function EditorPage({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [booted, setBooted] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [resumeList, setResumeList] = useState<{ id: string; title: string }[]>([]);
+  const [activeResume, setActiveResume] = useState<ResumeResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [openingEditor, setOpeningEditor] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [resumeList, setResumeList] = useState<ResumeSummary[]>([]);
+  const [originalView, setOriginalView] = useState(false);
   const [activeResumeId, setActiveResumeId] = useState('');
   const [bootError, setBootError] = useState('');
   const [title, setTitle] = useState('');
@@ -128,7 +135,11 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     toastTimerRef.current = window.setTimeout(() => setToast(''), 2_600);
   }
 
-  function activateResume(resume: ResumeResponse) {
+  function activateResume(resume: ResumeResponse, original = false) {
+    const viewOriginal = resume.kind === 'original' || (original && !!resume.source);
+    setOriginalView(viewOriginal);
+    localStorage.setItem(`resume-do:view:${user.id}`, viewOriginal ? `${resume.id}:original` : resume.id);
+    setActiveResume(resume); setActionError('');
     if (timerRef.current) { window.clearTimeout(timerRef.current); timerRef.current = null; }
     if (retryRef.current) { window.clearTimeout(retryRef.current); retryRef.current = null; }
     dirtySinceRef.current = null;
@@ -136,6 +147,9 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     setSelected('basic'); setItemIndex(0); setAppearanceDraft(null);
     setActiveResumeId(resume.id);
     localStorage.setItem(`resume-do:active:${user.id}`, resume.id);
+    if (resumeViewKind(resume) === 'structured') {
+      localStorage.setItem(`resume-do:last-editable:${user.id}`, resume.id);
+    }
     resumeIdRef.current = resume.id;
     revisionRef.current = resume.revision;
     versionRef.current = 0;
@@ -162,15 +176,11 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         const preferred = localStorage.getItem(`resume-do:active:${user.id}`);
         resume = await api.getResume(list.find(item => item.id === preferred)?.id ?? list[0].id);
       } else {
-        resume = await api.createResume({
-          title: '我的简历',
-          document: createDefaultDocument(),
-          appearance: createDefaultAppearance(),
-        });
+        setActiveResume(null); setBooted(true); return;
       }
       if (!mountedRef.current) return;
 
-      activateResume(resume);
+      activateResume(resume, localStorage.getItem(`resume-do:view:${user.id}`) === `${resume.id}:original`);
     } catch (err) {
       if (!mountedRef.current) return;
       if (err instanceof ApiError && err.status === 401) {
@@ -205,6 +215,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   }
 
   async function saveNow(): Promise<boolean> {
+    if (!activeResume || resumeViewKind(activeResume) === 'original') return true;
     const resumeId = resumeIdRef.current;
     if (!resumeId) return false;
 
@@ -291,6 +302,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   }
 
   async function ensureSaved(): Promise<number | null> {
+    if (!activeResume || resumeViewKind(activeResume) === 'original') return revisionRef.current;
     if (statusRef.current === 'conflict') return null;
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
@@ -609,6 +621,77 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     [doc, appearance],
   );
 
+  async function originalCreated(resume: ResumeResponse) {
+    // Preserve any edits made while the upload was in flight.
+    if (await ensureSaved() == null) {
+      setResumeList(await api.listResumes());
+      setActionError('新简历已创建，但当前修改尚未保存，请处理保存问题后切换');
+      return;
+    }
+    activateResume(resume);
+    setResumeList(await api.listResumes());
+  }
+  async function switchResume(value: string) {
+    const [id, view] = value.split(':');
+    try {
+      if (await ensureSaved() == null) return;
+      if (id === activeResume?.id && activeResume.kind !== 'original') {
+        setOriginalView(view === 'original' && !!activeResume.source);
+        localStorage.setItem(`resume-do:view:${user.id}`, value);
+      } else activateResume(await api.getResume(id), view === 'original');
+    } catch (e) { setActionError(e instanceof Error ? e.message : '切换失败'); }
+  }
+  function resumeOptions() {
+    return resumeList.flatMap(entry => {
+      const name = entry.id === activeResumeId ? title : entry.title;
+      const options = entry.kind === 'original' ? [] : [<option key={entry.id} value={entry.id}>{name} · 可编辑</option>];
+      if (entry.source || entry.kind === 'original') options.push(<option key={`${entry.id}:original`} value={`${entry.id}:original`}>{name} · 原件</option>);
+      return options;
+    });
+  }
+  async function openEditor() {
+    if (activeResume?.kind !== 'original' && activeResume) {
+      await switchResume(activeResume.id); return;
+    }
+    if (openingEditor || deleting) return;
+    setOpeningEditor(true); setActionError('');
+    try {
+      if(activeResume?.kind === 'original') {
+        const editable=await api.openLegacyEditor(activeResume.id);
+        activateResume(editable);
+        setResumeList(await api.listResumes());
+      } else {
+        await originalCreated(await api.createResume({title:'我的简历',document:createDefaultDocument(),appearance:createDefaultAppearance()}));
+      }
+    } catch (e) { setActionError(e instanceof Error ? e.message : '打开编辑器失败，请重试'); }
+    finally { setOpeningEditor(false); }
+  }
+  async function deleteCurrent() {
+    if (!activeResume || deleting) return;
+    setActionError(''); setDeleting(true);
+    try {
+      await confirmResumeDelete(title, window.confirm.bind(window), async () => {
+        if (timerRef.current) window.clearTimeout(timerRef.current);
+        if (retryRef.current) window.clearTimeout(retryRef.current);
+        // A save response for the old resume must not overwrite the next resume's state.
+        if (savePromiseRef.current) await savePromiseRef.current;
+        if (timerRef.current) window.clearTimeout(timerRef.current);
+        if (retryRef.current) window.clearTimeout(retryRef.current);
+        await api.deleteResume(activeResume.id);
+        const list = await api.listResumes(); setResumeList(list);
+        localStorage.removeItem(`resume-do:active:${user.id}`);
+        if (list.length) activateResume(await api.getResume(list[0].id));
+        else {
+          if (timerRef.current) window.clearTimeout(timerRef.current);
+          if (retryRef.current) window.clearTimeout(retryRef.current);
+          setActiveResume(null); setDoc(null); setAppearance(null); resumeIdRef.current = null;
+          versionRef.current = savedVersionRef.current = 0; setStatusBoth('saved');
+        }
+      });
+    } catch (e) { setActionError(e instanceof Error ? e.message : '删除失败'); }
+    finally { setDeleting(false); }
+  }
+
   if (bootError) {
     return (
       <div className="boot">
@@ -630,9 +713,37 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     );
   }
 
-  if (!booted || !doc || !appearance) {
-    return <div className="boot">正在加载简历…</div>;
+  if (!booted) return <div className="boot">正在加载简历…</div>;
+  if (!activeResume || originalView || resumeViewKind(activeResume) === 'original') {
+    return <div className="app-shell original-shell">
+      <header className="topbar">
+        <div className="logo">Resume Do · 简历工作台</div>
+        <select aria-label="切换简历" value={originalView ? `${activeResumeId}:original` : activeResumeId} disabled={!resumeList.length || deleting} onChange={e => void switchResume(e.target.value)}>
+          {!resumeList.length && <option value="">暂无简历</option>}
+          {resumeOptions()}
+        </select>
+        <OriginalImportButton beforeUpload={async () => !deleting} onCreated={originalCreated} />
+        <button type="button" disabled={deleting || openingEditor} onClick={() => void openEditor()}>
+          {openingEditor ? '正在打开…' : activeResume ? '返回编辑器' : '新建可编辑简历'}
+        </button>
+        {activeResume && <>
+          <button className="primary" onClick={() => {
+            if(activeResume.kind === 'original') void api.downloadSource(activeResume.id, activeResume.source?.filename ?? `${title}.pdf`).catch(e => setActionError(e.message));
+            else setDialog({kind:'export'});
+          }}>下载 PDF</button>
+          <button type="button" disabled={deleting} onClick={() => void deleteCurrent()}>删除简历</button>
+        </>}
+        <button onClick={() => void logout()}>退出</button>
+        {actionError && <span role="alert">{actionError}</span>}
+      </header>
+      {dialog?.kind === 'export' && activeResume && <ExportDialog resumeId={activeResume.id} source={activeResume.source} defaultFilename={defaultFilename} pageCount={pageCount} ensureSaved={ensureSaved} onClose={() => setDialog(null)} />}
+      {activeResume ? <OriginalResumeView key={activeResume.id} resume={activeResume} /> : <main className="original-empty">
+        <h1>还没有简历</h1><p>点击“导入简历”上传 PDF / DOCX，解析后直接进入编辑器，并保留原件。</p>
+        <button onClick={() => { void api.createResume({ title: '我的简历', document: createDefaultDocument(), appearance: createDefaultAppearance() }).then(originalCreated).catch(e => setActionError(e.message)); }}>创建可编辑简历</button>
+      </main>}
+    </div>;
   }
+  if (!doc || !appearance) return <div className="boot">简历数据缺失，请刷新重试。</div>;
 
   const dateInvalid = Boolean(
     record &&
@@ -666,16 +777,13 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
             ⚠ 版本冲突
           </button>
         )}
-        <select aria-label="切换简历" value={activeResumeId} onChange={event => {
-          const id = event.target.value;
-          void (async () => { if (await ensureSaved() != null) activateResume(await api.getResume(id)); })().catch(err => showToast(err instanceof Error ? err.message : '切换失败'));
-        }}>
-          {resumeList.map(entry => <option key={entry.id} value={entry.id}>{entry.id === activeResumeId ? title : entry.title}</option>)}
-          {!resumeList.some(entry => entry.id === activeResumeId) && <option value={activeResumeId}>{title}</option>}
+        <select aria-label="切换简历" value={activeResumeId} disabled={deleting} onChange={event => void switchResume(event.target.value)}>
+          {resumeOptions()}
         </select>
-        <button type="button" onClick={() => {
-          void (async () => { if (await ensureSaved() != null) setImportOpen(true); })();
-        }}>导入简历</button>
+        {activeResume.source && <button onClick={() => void switchResume(`${activeResume.id}:original`)}>查看原件</button>}
+        <OriginalImportButton beforeUpload={async () => !deleting && await ensureSaved() != null} onCreated={originalCreated} />
+        <button type="button" disabled={deleting} onClick={() => void deleteCurrent()}>删除简历</button>
+        {actionError && <span role="alert">{actionError}</span>}
         <span className="user-chip" title={user.email}>
           {user.displayName || user.email}
         </span>
@@ -694,6 +802,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         </button>
       </header>
 
+      {doc.importWarning && <p className="note" role="status">导入提示：{doc.importWarning}</p>}
       <nav className="toolbar" aria-label="排版工具">
         <button type="button" onClick={() => openAppearance('spacing')}>
           ↕ 间距设置
@@ -922,6 +1031,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
               {selected === 'basic' && (
                 <div className="field-grid">
                   <div className="photo-field">
+                    <label><input type="checkbox" checked={doc.basic.showPhoto !== false} onChange={event => updateDocument(draft => { draft.basic.showPhoto = event.target.checked; })} /> 展示照片（关闭后预览和编辑版导出均隐藏，保留照片数据）</label>
                     <label htmlFor="resume-photo">简历照片（可选）</label>
                     <div className="photo-actions">
                       {doc.basic.photo && <img className="photo-preview" src={doc.basic.photo} alt="简历照片" />}
@@ -996,6 +1106,17 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                       })
                     }
                   />
+                  <Field label="出生年月" type="month" value={doc.basic.birthMonth ?? ''} onChange={value => updateDocument(draft => { draft.basic.birthMonth = value; })} />
+                  <label>年龄（自动计算）<input readOnly value={(doc.basic.birthMonth ? ageFromBirthMonth(doc.basic.birthMonth) : doc.basic.age) || ''} placeholder="填写出生年月后自动计算" /></label>
+                  {([['nativePlace','籍贯'],['ethnicity','民族'],['maritalStatus','婚姻状况'],['politicalStatus','政治面貌'],['height','身高'],['weight','体重']] as const).map(([key,label]) => <Field key={key} label={label} value={doc.basic[key] ?? ''} maxLength={50} onChange={value => updateDocument(draft => { draft.basic[key] = value; })} />)}
+                  <div className="wide">
+                    {(doc.basic.customFields ?? []).map((pair,index) => <div className="field-grid" key={index}>
+                      <Field label="自定义名称" value={pair.label} maxLength={30} onChange={value => updateDocument(draft => { draft.basic.customFields![index].label = value; })} />
+                      <Field label="自定义内容" value={pair.value} maxLength={100} onChange={value => updateDocument(draft => { draft.basic.customFields![index].value = value; })} />
+                      <button onClick={() => updateDocument(draft => { draft.basic.customFields!.splice(index,1); })}>删除此信息</button>
+                    </div>)}
+                    <button disabled={(doc.basic.customFields?.length ?? 0) >= 20} onClick={() => updateDocument(draft => { (draft.basic.customFields ??= []).push({label:'',value:''}); })}>添加自定义信息</button>
+                  </div>
                   <p className="note wide">
                     邮箱填写后会进行格式校验；电话仅限制为 30 个字符，请自行核对号码。姓名为空时导出前会提醒。
                   </p>
@@ -1198,13 +1319,10 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         />
       )}
 
-      {importOpen && <ImportDialog userId={user.id} onClose={() => setImportOpen(false)} onConfirmed={resume => {
-        activateResume(resume); setResumeList(list => [{ id: resume.id, title: resume.title }, ...list]); setImportOpen(false);
-        showToast('已创建导入简历，原简历保持不变');
-      }} />}
       {dialog?.kind === 'export' && resumeIdRef.current && (
         <ExportDialog
           resumeId={resumeIdRef.current}
+          source={activeResume.source}
           defaultFilename={defaultFilename}
           pageCount={pageCount}
           ensureSaved={ensureSaved}

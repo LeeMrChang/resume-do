@@ -25,6 +25,8 @@ public class ImportService {
         long version, String errorCode, String message, String resumeId, Instant expiresAt) {}
     public record SaveRequest(long version, JsonNode draft) {}
     public record ConfirmRequest(long version) {}
+    private final EditableImportService editable;
+    private final ImportPhotoExtractor photos;
     private final ImportRepository jobs;
     private final ImportParser parser;
     private final ImportMapper mapper;
@@ -40,7 +42,8 @@ public class ImportService {
     });
 
     public ImportService(ImportRepository jobs, ImportParser parser, ImportMapper mapper, ResumeValidator validator,
-        ResumeService resumes, ObjectMapper json, @Value("${app.storage-dir}") String storageDir) {
+        ResumeService resumes, ObjectMapper json, @Value("${app.storage-dir}") String storageDir, EditableImportService editable, ImportPhotoExtractor photos) {
+        this.editable=editable; this.photos=photos;
         this.jobs = jobs; this.parser = parser; this.mapper = mapper; this.validator = validator; this.resumes = resumes; this.json = json;
         this.directory = Paths.get(storageDir).toAbsolutePath().normalize().resolve("imports");
     }
@@ -132,7 +135,7 @@ public class ImportService {
         if (request.version() != job.version()) throw ApiException.conflict("IMPORT_CONFLICT", "请先保存最新校对内容再确认", Map.of());
         JsonNode draft = read(job.draft());
         validator.validate(draft.path("document"), draft.path("appearance"));
-        var resume = resumes.create(owner, new ResumeDtos.CreateRequest(draft.path("title").asText(job.filename()), draft.path("document"), draft.path("appearance")));
+        var resume = editable.confirm(owner, new StoredUpload(safeFile(job.fileKey()),job.filename()), draft);
         jobs.confirmed(id, resume.id());
         afterCommit(() -> removeOriginal(job));
         return resume;
@@ -156,7 +159,9 @@ public class ImportService {
             Future<?> task = executor.submit(() -> {
                 try {
                     var parsed = parser.parse(target, extension);
-                    jobs.result(id, version, parsed.text(), mapper.draft(parsed.text(), filename).toString(), parsed.warning());
+                    var draft=mapper.draft(parsed.text(), filename);
+                    ((ObjectNode)draft.path("document").path("basic")).put("photo",photos.extract(target,extension));
+                    jobs.result(id, version, parsed.text(), draft.toString(), parsed.warning());
                 } catch (ApiException e) { jobs.fail(id, version, e.code(), e.getMessage()); }
                 catch (Exception e) { jobs.fail(id, version, "PARSE_FAILED", "解析失败，原文件已保留，可重试或手动整理"); }
             });
@@ -167,6 +172,16 @@ public class ImportService {
                 }
             }, 30, TimeUnit.SECONDS);
         } catch (RejectedExecutionException e) { jobs.fail(id, version, "IMPORT_BUSY", "解析服务繁忙，原文件已保留，请稍后重试"); }
+    }
+    private record StoredUpload(Path path,String filename) implements MultipartFile {
+        public String getName() { return "file"; }
+        public String getOriginalFilename() { return filename; }
+        public String getContentType() { return filename.toLowerCase(Locale.ROOT).endsWith(".pdf")?"application/pdf":"application/vnd.openxmlformats-officedocument.wordprocessingml.document"; }
+        public boolean isEmpty() { return getSize()==0; }
+        public long getSize() { try { return Files.size(path); } catch(IOException e) { throw new IllegalStateException("原文件读取失败",e); } }
+        public byte[] getBytes() throws IOException { return Files.readAllBytes(path); }
+        public InputStream getInputStream() throws IOException { return Files.newInputStream(path); }
+        public void transferTo(File destination) throws IOException { Files.copy(path,destination.toPath()); }
     }
     private ImportRepository.Job require(long owner, String id, boolean lock) {
         var job = jobs.find(owner, id, lock).orElseThrow(() -> ApiException.notFound("导入任务不存在"));

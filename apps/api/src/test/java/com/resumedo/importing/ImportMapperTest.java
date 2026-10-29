@@ -40,7 +40,7 @@ class ImportMapperTest {
     @Test void invalidOrRepeatedFieldsRemainAvailableForManualReview() {
         var draft = mapper.draft("姓名：甲\n姓名：乙\n邮箱：not-an-email\n未知：保留", "test.pdf");
         assertThat(draft.path("document").path("basic").path("name").asText()).isEqualTo("甲");
-        assertThat(draft.toString()).contains("姓名：乙", "not-an-email", "未知：保留");
+        assertThat(draft.toString()).contains("乙", "not-an-email", "未知", "保留");
     }
     @Test void recognizesUnlabelledHeaderContactsButKeepsTheEntireMixedLine() {
         var draft = mapper.draft("张三\n13800000000 | test@example.com | 未识别信息\n工作经历\n公司甲 2020.01-2022.01\n原正文", "resume.pdf");
@@ -58,7 +58,8 @@ class ImportMapperTest {
         assertThat(basic.path("experienceYears").asText()).isEqualTo("7年经验");
         assertThat(basic.path("phone").asText()).isEqualTo("13800000000");
         assertThat(basic.path("email").asText()).isEqualTo("test@example.com");
-        assertThat(draft.toString()).contains("年龄：31岁", "籍贯：广东揭阳");
+        assertThat(basic.path("age").asText()).isEqualTo("31岁");
+        assertThat(basic.path("nativePlace").asText()).isEqualTo("广东揭阳");
         assertThat(draft.toString()).doesNotContain("\uf073", "\u2588", "\ue001", "\ufffd", "电 话");
     }
 }

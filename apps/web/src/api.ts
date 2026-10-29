@@ -9,7 +9,10 @@ export interface User {
   displayName: string;
 }
 
+export interface OriginalSource { filename: string; mime: string; bytes: number; pages: number | null; }
 export interface ResumeSummary {
+  kind?: 'structured' | 'original';
+  source?: OriginalSource;
   id: string;
   title: string;
   revision: number;
@@ -18,6 +21,8 @@ export interface ResumeSummary {
 }
 
 export interface ResumeResponse {
+  kind?: 'structured' | 'original';
+  source?: OriginalSource;
   id: string;
   title: string;
   revision: number;
@@ -96,6 +101,30 @@ export const api = {
     request<User>('/api/auth/register', json({ email, password, displayName })),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
 
+  openLegacyEditor: (id: string) => request<ResumeResponse>(`/api/imports/from-original/${id}`, { method: 'POST' }),
+  importEditable: (file: File) => {
+    const body = new FormData(); body.append('file', file);
+    return request<ResumeResponse>('/api/imports/direct', { method: 'POST', body });
+  },
+  downloadSource: async (id: string, filename: string) => {
+    const response = await fetch(`/api/resumes/${id}/source?download=1`, { credentials: 'include' });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new ApiError(response.status, body?.code ?? 'SOURCE_FAILED', body?.message ?? '原件下载失败');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const encoded = response.headers.get('Content-Disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    let name = filename;
+    if (encoded) { try { name = decodeURIComponent(encoded); } catch { /* Use the suggested name. */ } }
+    const link = document.createElement('a'); link.href = url; link.download = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_');
+    document.body.appendChild(link); link.click(); link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
+  uploadOriginal: (file: File) => {
+    const body = new FormData(); body.append('file', file);
+    return request<ResumeResponse>('/api/resumes/originals', { method: 'POST', body });
+  },
+  deleteResume: (id: string) => request<void>(`/api/resumes/${id}`, { method: 'DELETE' }),
   listResumes: () => request<ResumeSummary[]>('/api/resumes'),
   getResume: (id: string) => request<ResumeResponse>(`/api/resumes/${id}`),
   createResume: (payload: {

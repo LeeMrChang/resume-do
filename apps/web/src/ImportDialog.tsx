@@ -112,7 +112,7 @@ export default function ImportDialog({ userId, onClose, onConfirmed }: {
     if (busy) return;
     void run(async () => { await persist(); onClose(); });
   }}>
-    <p className="note">仅提取文字，不复刻原版式；扫描 PDF 暂不支持。原文件与草稿最多保留 24 小时，确认或放弃后清理原文件；关闭本窗口保留已保存草稿，不会创建简历。</p>
+    <p className="note">仅提取文字，不复刻原版式；扫描 PDF 暂不支持。未确认草稿与临时文件最多保留 24 小时；确认后原件关联到正式简历，删除简历时一并删除；放弃时清理临时原文件。关闭窗口不会创建简历。</p>
     <div className="import-upload" onDragOver={event => event.preventDefault()} onDrop={event => {
       event.preventDefault(); if (!busy && !loading) void upload(event.dataTransfer.files[0]);
     }}>

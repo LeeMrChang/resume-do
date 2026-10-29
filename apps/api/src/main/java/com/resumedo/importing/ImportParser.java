@@ -54,6 +54,7 @@ public class ImportParser {
             int emptyPages = 0;
             var stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
+            stripper.setWordSeparator("  ");
             for (int page = 1; page <= document.getNumberOfPages(); page++) {
                 interrupted();
                 stripper.setStartPage(page); stripper.setEndPage(page);
@@ -71,13 +72,13 @@ public class ImportParser {
                     stripper.writeText(document, output);
                 } catch (IOException failure) {
                     if (!text.toString().isBlank()) return new Parsed(text.toString(),
-                        "部分 PDF 页面读取失败，已保留可读取文字。请下载原文件核对缺失内容，重试或手动补全后再确认。");
+                        "部分 PDF 页面读取失败，已保留可读取文字。请下载原文件核对缺失内容，重试或在编辑器手动补全。");
                     throw failure;
                 }
                 if (text.substring(before).isBlank()) emptyPages++;
             }
             if (text.toString().isBlank()) throw error("SCANNED_PDF", "扫描版或无可提取文字的 PDF 暂不支持，可手动创建简历");
-            return new Parsed(text.toString(), emptyPages > 0 ? "部分页面没有文字层，可能包含扫描内容，请核对原文件，手动补全。" : "PDF 多栏阅读顺序可能有差异，请对照原文件校对。");
+            return new Parsed(text.toString(), emptyPages > 0 ? "部分页面没有文字层，可能包含扫描内容，请核对原文件，手动补全。" : "PDF 多栏阅读顺序可能有差异，请使用“查看原件”核对编辑内容。");
         }
     }
 
@@ -120,11 +121,11 @@ public class ImportParser {
             for (var part : parts.entrySet()) if (!part.getKey().equals("[Content_Types].xml")) appendXml(text, part.getValue());
         } catch (XMLStreamException failure) {
             if (!text.toString().isBlank()) return new Parsed(text.toString(),
-                "部分 Word 内容损坏，已保留可读取文字。请下载原文件核对缺失内容，重试或手动补全后再确认。");
+                "部分 Word 内容损坏，已保留可读取文字。请下载原文件核对缺失内容，重试或在编辑器手动补全。");
             throw failure;
         }
         if (text.toString().isBlank()) throw error("NO_TEXT", "Word 文件没有可提取的正文，请手动创建或提供文字版文件");
-        return new Parsed(text.toString(), "仅提取文字，不导入照片、图形或原版式。请对照原文件核对表格和经历顺序。");
+        return new Parsed(text.toString(), "已提取文字并尝试提取内嵌照片，不复刻图形或原版式。请对照原件核对表格和经历顺序。");
     }
 
     private void appendXml(StringBuilder text, byte[] bytes) throws XMLStreamException {

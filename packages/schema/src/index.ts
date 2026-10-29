@@ -80,7 +80,25 @@ export const ALL_TEMPLATE_IDS = [...TEMPLATE_IDS, ...LEGACY_TEMPLATE_IDS] as con
 
 export type TemplateId = (typeof ALL_TEMPLATE_IDS)[number];
 
+/** Age is computed only when a real birth month exists; source-reported age is a fallback. */
+export function ageFromBirthMonth(month: string | undefined, now = new Date()): string {
+  if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return '';
+  const [year, m] = month.split('-').map(Number);
+  const age = now.getFullYear() - year - (now.getMonth() + 1 < m ? 1 : 0);
+  return age >= 0 && age <= 150 ? `${age}岁` : '';
+}
+
 export const basicSchema = z.object({
+  birthMonth: z.string().regex(/^$|^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+  age: z.string().max(30).optional(),
+  nativePlace: z.string().max(50).optional(),
+  ethnicity: z.string().max(50).optional(),
+  maritalStatus: z.string().max(50).optional(),
+  politicalStatus: z.string().max(50).optional(),
+  height: z.string().max(50).optional(),
+  weight: z.string().max(50).optional(),
+  showPhoto: z.boolean().optional(),
+  customFields: z.array(z.object({ label: z.string().max(30), value: z.string().max(100) })).max(20).optional(),
   name: z.string().max(50).default(''),
   gender: z.string().max(10).default(''),
   city: z.string().max(50).default(''),
@@ -140,6 +158,7 @@ export const sectionSchema = z
 export const resumeDocumentSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
+    importWarning: z.string().max(500).optional(),
     basic: basicSchema,
     intent: intentSchema,
     sections: z.array(sectionSchema).max(30),
@@ -221,8 +240,9 @@ export function stripTags(html: string): string {
 }
 
 export function totalTextLength(doc: ResumeDocument): number {
-  const { photo: _photo, ...basic } = doc.basic;
-  const basicLength = Object.values(basic).join('').length;
+  const { photo: _photo, customFields = [], ...basic } = doc.basic;
+  const basicLength = Object.values(basic).filter(value => typeof value === 'string').join('').length
+    + customFields.reduce((total, pair) => total + pair.label.length + pair.value.length, 0);
   const intent = Object.values(doc.intent).join('').length;
   let body = 0;
   for (const section of doc.sections) {
@@ -277,6 +297,17 @@ export function createDefaultDocument(): ResumeDocument {
       email: '',
       experienceYears: '',
       photo: '',
+      showPhoto: true,
+      customFields: [],
+      birthMonth: '',
+      age: '',
+      nativePlace: '',
+      ethnicity: '',
+      maritalStatus: '',
+      politicalStatus: '',
+      height: '',
+      weight: '',
+
     },
     intent: { role: '', city: '', salary: '', arrival: '' },
     sections: defaultSections(),

@@ -52,6 +52,8 @@ public class ExportService {
     public ExportResponse create(long ownerId, String resumePublicId, CreateExportRequest request) {
         ResumeRow resume = resumes.find(ownerId, resumePublicId)
                 .orElseThrow(() -> ApiException.notFound("简历不存在"));
+        if ("original".equals(resume.kind())) throw ApiException.conflict(
+            "ORIGINAL_RESUME_SOURCE_DOWNLOAD", "原件简历请使用原件下载", Map.of());
         if (request.revision() != resume.revision()) {
             throw ApiException.conflict(
                     "REVISION_CONFLICT",

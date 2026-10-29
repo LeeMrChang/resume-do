@@ -48,6 +48,7 @@ public class ResumeValidator {
 
         int schemaVersion = requireInt(document, "schemaVersion", 1, 1, "文档版本");
         ObjectNode basic = requireObject(document, "basic", "基本信息");
+        if(document.has("importWarning")) text(document,"importWarning",500,"解析提示");
         int total = 0;
         total += text(basic, "name", 50, "姓名").length();
         total += text(basic, "gender", 10, "性别").length();
@@ -59,6 +60,17 @@ public class ResumeValidator {
         }
         total += email.length() + text(basic, "experienceYears", 30, "工作年限").length();
 
+        month(basic, "birthMonth", "出生年月");
+        total += text(basic, "age", 30, "原文年龄").length();
+        for(String key : java.util.List.of("nativePlace","ethnicity","maritalStatus","politicalStatus","height","weight"))
+            total += text(basic,key,50,"基本信息").length();
+        bool(basic,"showPhoto",true,"展示照片");
+        if(!basic.has("customFields")) basic.putArray("customFields");
+        if(!basic.path("customFields").isArray() || basic.path("customFields").size()>20) throw ApiException.badRequest("自定义信息最多 20 项");
+        for(var pair:basic.path("customFields")) {
+            if(!pair.isObject()) throw ApiException.badRequest("自定义信息格式不正确");
+            total += text((ObjectNode)pair,"label",30,"信息名称").length()+text((ObjectNode)pair,"value",100,"信息内容").length();
+        }
         String photo = text(basic, "photo", 400_000, "照片");
         if (!photo.isEmpty() && !PHOTO.matcher(photo).matches()) {
             throw ApiException.badRequest("照片必须是 PNG、JPEG 或 WebP 的内嵌图片");

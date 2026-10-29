@@ -5,96 +5,64 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { createDefaultAppearance, createDefaultDocument } from '@resume-do/schema';
-import type { ImportJob, ResumeResponse } from '../src/api';
 
-// Isolated UI regression: real production bundle + in-memory API; no user data.
-test('import: close before confirm creates nothing; corrected draft survives reload; confirm creates a distinct editable resume', { timeout: 90_000 }, async () => {
-  const dist = fileURLToPath(new URL('../dist/', import.meta.url));
-  const base = 'http://resume-do.test';
-  const browser = await chromium.launch({ channel: process.env.RESUME_DO_BROWSER_CHANNEL || 'chrome', headless: true });
-  try {
-    const page = await browser.newPage();
-    const timestamp = new Date().toISOString();
-    const initialDoc = createDefaultDocument(); initialDoc.basic.name = '原简历姓名';
-    const original: ResumeResponse = { id: 'original', title: '原简历', revision: 1, document: initialDoc,
-      appearance: createDefaultAppearance(), createdAt: timestamp, updatedAt: timestamp };
-    const records = new Map<string, ResumeResponse>([[original.id, structuredClone(original)]]);
-    const imports = new Map<string, ImportJob>();
-    let nextImport = 0;
-    await page.route(`${base}/**`, async route => {
-      const request = route.request(), url = new URL(request.url()).pathname;
-      let body: unknown;
-      if (url === '/api/auth/me') body = { id: 1, email: 'test@example.com', displayName: '测试' };
-      else if (url === '/api/resumes') {
-        assert.equal(request.method(), 'GET', 'opening or closing import must not POST a resume');
-        body = [...records.values()];
-      } else if (url.startsWith('/api/resumes/')) {
-        const record = records.get(url.split('/')[3])!;
-        if (request.method() === 'PATCH') Object.assign(record, request.postDataJSON(), { revision: record.revision + 1 });
-        body = record;
-      } else if (url === '/api/imports') {
-        if (request.method() === 'POST') {
-          assert.match(request.headers()['content-type'], /^multipart\/form-data; boundary=/);
-          const document = createDefaultDocument(); document.basic.name = '导入姓名';
-          const entry: ImportJob = { id: `import-${++nextImport}`, filename: 'resume.pdf', status: 'ready', sourceText: '姓名：导入姓名\n原文完整保留',
-            draft: { title: '导入简历', document, appearance: createDefaultAppearance() }, version: 0, expiresAt: new Date(Date.now() + 86400000).toISOString() };
-          imports.set(entry.id, entry); body = entry;
-        } else body = [...imports.values()].filter(item => item.status !== 'confirmed' && item.status !== 'cancelled');
-      } else if (url.startsWith('/api/imports/')) {
-        const [, , , id, action] = url.split('/');
-        const entry = imports.get(id)!;
-        if (action === 'confirm') {
-          assert.equal(request.postDataJSON().version, entry.version);
-          if (!entry.resumeId) {
-            const record: ResumeResponse = { id: `created-${id}`, ...structuredClone(entry.draft!), revision: 0, createdAt: timestamp, updatedAt: timestamp };
-            records.set(record.id, record); entry.resumeId = record.id; entry.status = 'confirmed';
-          }
-          body = records.get(entry.resumeId);
-        } else if (request.method() === 'PATCH') {
-          const payload = request.postDataJSON(); assert.equal(payload.version, entry.version);
-          entry.draft = payload.draft; entry.version++; body = entry;
-        } else if (request.method() === 'DELETE') {
-          entry.status = 'cancelled'; await route.fulfill({ status: 204 }); return;
-        } else body = entry;
-      } else {
-        const file = path.join(dist, url === '/' ? 'index.html' : url.slice(1));
-        const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
-        await route.fulfill({ body: await readFile(file), contentType: types[path.extname(file)] || 'application/octet-stream' }); return;
-      }
-      await route.fulfill({ json: body });
-    });
-    await page.goto(base);
-    await page.getByRole('button', { name: '导入简历', exact: true }).click();
-    let dialog = page.getByRole('dialog', { name: '导入已有简历' });
-    await dialog.locator('input[type=file]').setInputFiles({ name: 'resume.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 test fixture') });
-    await dialog.getByLabel('姓名', { exact: true }).fill('校对后的姓名');
-    await dialog.getByRole('button', { name: '保存草稿并关闭' }).click();
-    await dialog.waitFor({ state: 'hidden' });
-    assert.equal(records.size, 1);
-    await page.reload();
-    await page.getByRole('button', { name: '导入简历', exact: true }).click();
-    dialog = page.getByRole('dialog', { name: '导入已有简历' });
-    await dialog.getByLabel('姓名', { exact: true }).waitFor();
-    assert.equal(await dialog.getByLabel('姓名', { exact: true }).inputValue(), '校对后的姓名');
-    await dialog.getByRole('button', { name: '确认导入为新简历' }).click();
-    await dialog.waitFor({ state: 'hidden' });
-    assert.equal(records.size, 2);
-    assert.deepEqual(records.get(original.id), original);
-    assert.equal(await page.getByLabel('姓名', { exact: true }).inputValue(), '校对后的姓名');
-    await page.reload();
-    await page.getByLabel('姓名', { exact: true }).waitFor();
-    assert.equal(await page.getByLabel('姓名', { exact: true }).inputValue(), '校对后的姓名');
-    await page.getByLabel('切换简历', { exact: true }).selectOption('original');
-    await page.getByLabel('姓名', { exact: true }).waitFor();
-    // Wait for the selected record to render, rather than comparing stale input.
-    await page.getByLabel('姓名', { exact: true }).evaluate((input: HTMLInputElement) => input.value);
-    assert.equal(records.get(original.id)!.document.basic.name, '原简历姓名');
-    await page.getByRole('button', { name: '导入简历', exact: true }).click();
-    dialog = page.getByRole('dialog', { name: '导入已有简历' });
-    await dialog.locator('input[type=file]').setInputFiles({ name: 'resume.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 same file') });
-    await dialog.getByRole('button', { name: '确认导入为新简历' }).click();
-    await dialog.waitFor({ state: 'hidden' });
-    assert.equal(records.size, 3, 'a second upload creates a separate resume');
-    assert.deepEqual(records.get(original.id), original);
-  } finally { await browser.close(); }
+// v2.2 creates an editable resume with an associated original. API is isolated; no personal files or real DB.
+test('v2.2 import enters editor, returns from native original pages, downloads bytes and deletes both views', { timeout: 90_000 }, async () => {
+ const base='http://resume-do.test';
+ const dist=fileURLToPath(new URL('../dist/',import.meta.url));
+ const fixture=await readFile(new URL('./fixtures/original-mixed.pdf',import.meta.url));
+ const browser=await chromium.launch({channel:process.env.RESUME_DO_BROWSER_CHANNEL||'chrome',headless:true});
+ try {
+  const page=await browser.newPage();
+  let record: Record<string,unknown>|null=null;
+  let deleted=0, exports=0;
+  await page.route(`${base}/**`,async route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname.startsWith('/api/')) return route.fallback();
+   const file=path.resolve(dist,url.pathname==='/'?'index.html':url.pathname.slice(1));
+   if(!file.startsWith(dist+path.sep)) throw Error('Invalid asset path');
+   const types:Record<string,string>={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.wasm':'application/wasm'};
+   await route.fulfill({body:await readFile(file),contentType:types[path.extname(file)]||'application/octet-stream'});
+  });
+  await page.route('**/api/**',async route=>{
+   const url=new URL(route.request().url()), method=route.request().method();
+   if(url.pathname==='/api/auth/me') return route.fulfill({json:{id:99,email:'original-test@example.invalid',displayName:'L1 test'}});
+   if(url.pathname.endsWith('/exports')) { exports++; throw Error('Original must not export'); }
+   if(url.pathname==='/api/imports/direct') {
+    assert.equal(method,'POST');
+    const document=createDefaultDocument(); document.basic.name='导入测试';
+    record={id:'original-test',kind:'structured',title:'mixed',revision:0,document,appearance:createDefaultAppearance(),source:{filename:'mixed.pdf',mime:'application/pdf',bytes:fixture.length,pages:3},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    return route.fulfill({status:201,json:record});
+   }
+   if(url.pathname==='/api/resumes') return route.fulfill({json:record?[record]:[]});
+   if(url.pathname==='/api/resumes/original-test/source') return route.fulfill({body:fixture,contentType:'application/pdf',headers:url.searchParams.has('download')?{'Content-Disposition':'attachment; filename="mixed.pdf"'}:{}});
+   if(url.pathname==='/api/resumes/original-test' && method==='DELETE') {deleted++;record=null;return route.fulfill({status:204});}
+   if(url.pathname==='/api/resumes/original-test') return route.fulfill({json:record});
+   throw Error(`Unexpected request ${method} ${url.pathname}`);
+  });
+  await page.goto(base);
+  await page.getByLabel('选择 PDF 或 DOCX 简历').setInputFiles({name:'mixed.pdf',mimeType:'application/pdf',buffer:fixture});
+  await page.getByLabel('姓名',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('姓名',{exact:true}).inputValue(),'导入测试');
+  await page.getByRole('button',{name:'查看原件',exact:true}).click();
+  await page.getByText('原件预览 · 共 3 页',{exact:false}).waitFor();
+  await page.getByLabel('原件第 3 页画布').waitFor();
+  await page.waitForFunction(()=>Array.from(document.querySelectorAll('.original-page canvas')).every(c=>(c as HTMLCanvasElement).height>0));
+  assert.equal(await page.getByRole('textbox').count(),0,'No correction/edit form');
+  const ratios=await page.locator('.original-page canvas').evaluateAll(nodes=>nodes.map(n=>{const c=n as HTMLCanvasElement;return c.width/c.height;}));
+  for(const [i,ratio] of [612/792,792/612,700/400].entries()) assert.ok(Math.abs(ratios[i]-ratio)<0.01);
+  await page.getByRole('button',{name:'返回编辑器',exact:true}).click();
+  assert.equal(await page.getByLabel('姓名',{exact:true}).inputValue(),'导入测试');
+  await page.getByRole('button',{name:'查看原件',exact:true}).click();
+  await page.reload(); await page.getByLabel('原件第 3 页画布').waitFor();
+  await page.getByRole('button',{name:'下载 PDF',exact:true}).click();
+  assert.equal(await page.getByRole('radio',{name:/原件版/}).isChecked(),true);
+  const download=page.waitForEvent('download'); await page.getByRole('button',{name:'下载原件版',exact:true}).click();
+  const downloaded=await download; const file=await downloaded.path(); assert.ok(file); assert.deepEqual(await readFile(file),fixture); assert.equal(exports,0);
+  await page.getByRole('button',{name:'关闭',exact:true}).last().click();
+  page.once('dialog',dialog=>dialog.dismiss()); await page.getByRole('button',{name:'删除简历',exact:true}).click(); assert.equal(deleted,0);
+  page.once('dialog',dialog=>dialog.accept()); await page.getByRole('button',{name:'删除简历',exact:true}).click();
+  await page.getByText('还没有简历',{exact:true}).waitFor(); assert.equal(deleted,1);
+  await page.reload(); await page.getByText('还没有简历',{exact:true}).waitFor();
+ } finally { await browser.close(); }
 });

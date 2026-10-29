@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createDefaultAppearance, type ResumeAppearance } from '@resume-do/schema';
 import { TEMPLATE_CATALOG, TEMPLATE_GROUPS, normalizeTemplateId, renderThumbnailFragment } from '@resume-do/templates';
-import { api, ApiError, type ExportJob } from './api';
+import { api, ApiError, type ExportJob, type OriginalSource } from './api';
 import { waitForExport } from './exportPolling';
 
 export function Modal({
@@ -298,22 +298,26 @@ export function RenameDialog({
   );
 }
 
-type ExportPhase = 'preparing' | 'working' | 'ready' | 'failed';
+type ExportPhase = 'choosing' | 'preparing' | 'working' | 'ready' | 'failed';
 
 export function ExportDialog({
   resumeId,
+  source,
   defaultFilename,
   pageCount,
   ensureSaved,
   onClose,
 }: {
   resumeId: string;
+  source?: OriginalSource | null;
   defaultFilename: string;
   pageCount: number;
   ensureSaved: () => Promise<number | null>;
   onClose: () => void;
 }) {
-  const [phase, setPhase] = useState<ExportPhase>('preparing');
+  const hasOriginalPdf = source?.mime === 'application/pdf';
+  const [version, setVersion] = useState<'original' | 'edited'>(hasOriginalPdf ? 'original' : 'edited');
+  const [phase, setPhase] = useState<ExportPhase>(hasOriginalPdf ? 'choosing' : 'preparing');
   const [job, setJob] = useState<ExportJob | null>(null);
   const [error, setError] = useState('');
   const [downloaded, setDownloaded] = useState(false);
@@ -337,6 +341,14 @@ export function ExportDialog({
   }
 
   async function start() {
+    if (version === 'original') {
+      setPhase('preparing'); setError(''); setDownloadError('');
+      try {
+        await api.downloadSource(resumeId, defaultFilename);
+        setDownloaded(true); setPhase('ready');
+      } catch (err) { setError(messageOf(err)); setPhase('failed'); }
+      return;
+    }
     setPhase('preparing');
     setError('');
     setDownloadError('');
@@ -375,7 +387,7 @@ export function ExportDialog({
   }
 
   useEffect(() => {
-    if (startedRef.current) return;
+    if (startedRef.current || hasOriginalPdf) return;
     startedRef.current = true;
     void start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -422,13 +434,19 @@ export function ExportDialog({
   return (
     <Modal
       title="导出 PDF"
-      subtitle="A4 纵向 · 与当前预览同一份排版 · 文字可选择复制"
+      subtitle={version === 'original' ? '原件版 · 原始文件字节与分页，保留全部内容' : '编辑版 · 按当前模板生成 PDF'}
       onClose={onClose}
     >
+      {hasOriginalPdf && <fieldset disabled={phase !== 'choosing'}>
+        <legend>选择导出版本</legend>
+        <label><input type="radio" name="export-version" checked={version === 'original'} onChange={() => setVersion('original')} /> 原件版（默认）：原文件，不包含编辑修改</label>
+        <label><input type="radio" name="export-version" checked={version === 'edited'} onChange={() => setVersion('edited')} /> 编辑版：当前内容与模板</label>
+      </fieldset>}
+      {source && !hasOriginalPdf && <p className="note">Word 原件可在“查看原件”中下载；PDF 导出使用编辑版。</p>}
       <div className="status-line">
         <span>页面</span>
         <span>
-          A4 · 210 × 297mm · 共 {pageCount} 页
+          {version === 'original' ? `原文件尺寸 · 共 ${source?.pages ?? '未知'} 页` : `A4 · 210 × 297mm · 共 ${pageCount} 页`}
         </span>
       </div>
       <div className="status-line">
@@ -436,12 +454,16 @@ export function ExportDialog({
         <span className="filename">{job?.filename || defaultFilename}</span>
       </div>
 
+      {phase === 'choosing' && <footer>
+        <button type="button" onClick={onClose}>取消</button>
+        <button type="button" className="primary" onClick={() => void start()}>下载{version === 'original' ? '原件版' : '编辑版'}</button>
+      </footer>}
       {phase === 'preparing' && (
         <>
           <div className="progress" aria-hidden="true">
             <span />
           </div>
-          <p className="note">正在保存最新修改并固定导出快照…</p>
+          <p className="note">{version === 'original' ? '正在下载原文件…' : '正在保存最新修改并固定导出快照…'}</p>
         </>
       )}
 
@@ -458,7 +480,7 @@ export function ExportDialog({
         <div className="success">
           <b>{downloaded ? '文件已开始下载。' : '文件已生成。'}</b>
           <p>
-            下载链接 10 分钟内有效；如浏览器未自动保存，请点击“再次下载”。导出使用的数据已固定为本次快照。
+            {version === 'original' ? '下载的是上传原件，文件字节保持一致。编辑修改仅在编辑版体现。' : '下载链接 10 分钟内有效；如浏览器未自动保存，请点击“再次下载”。导出使用本次快照。'}
           </p>
           {downloadError && (
             <p className="error" role="alert">
@@ -469,11 +491,13 @@ export function ExportDialog({
             <button type="button" onClick={onClose}>
               关闭
             </button>
+            {hasOriginalPdf && <button type="button" onClick={() => { setPhase('choosing'); setJob(null); keyRef.current=''; }}>重新选择版本</button>}
             <button
               type="button"
               className="primary"
               onClick={() => {
-                if (job) void downloadFile(job);
+                if (version === 'original') void start();
+                else if (job) void downloadFile(job);
               }}
             >
               再次下载
@@ -489,6 +513,7 @@ export function ExportDialog({
           </div>
           <p className="note">导出失败不会扣减次数，也不会改变简历内容。</p>
           <footer>
+            {hasOriginalPdf && <button type="button" onClick={() => { setPhase('choosing'); setJob(null); keyRef.current=''; }}>重新选择版本</button>}
             <button type="button" onClick={onClose}>
               返回编辑
             </button>

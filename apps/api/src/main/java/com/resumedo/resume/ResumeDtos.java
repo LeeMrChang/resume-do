@@ -24,6 +24,8 @@ public final class ResumeDtos {
             JsonNode appearance) {
     }
 
+    public record Source(String filename, String mime, Long bytes, Integer pages) {}
+
     public record ResumeResponse(
             String id,
             String title,
@@ -31,7 +33,10 @@ public final class ResumeDtos {
             JsonNode document,
             JsonNode appearance,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt, String kind, Source source) {
+        public ResumeResponse(String id, String title, long revision, JsonNode document, JsonNode appearance, Instant createdAt, Instant updatedAt) {
+            this(id,title,revision,document,appearance,createdAt,updatedAt,"structured",null);
+        }
     }
 
     public record ResumeSummary(
@@ -39,6 +44,6 @@ public final class ResumeDtos {
             String title,
             long revision,
             String templateId,
-            Instant updatedAt) {
+            Instant updatedAt, String kind, Source source) {
     }
 }
