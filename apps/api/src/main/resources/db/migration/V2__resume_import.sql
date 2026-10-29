@@ -1,0 +1,23 @@
+CREATE TABLE import_jobs (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  public_id CHAR(32) NOT NULL,
+  owner_id BIGINT NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  file_key VARCHAR(100) NULL,
+  status VARCHAR(16) NOT NULL,
+  source_text MEDIUMTEXT NULL,
+  draft JSON NULL,
+  version BIGINT NOT NULL DEFAULT 0,
+  edited BOOLEAN NOT NULL DEFAULT FALSE,
+  error_code VARCHAR(64) NULL,
+  error_message VARCHAR(500) NULL,
+  resume_public_id CHAR(32) NULL,
+  created_at DATETIME(3) NOT NULL,
+  updated_at DATETIME(3) NOT NULL,
+  expires_at DATETIME(3) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_import_public_id (public_id),
+  KEY idx_import_owner (owner_id, status, expires_at),
+  KEY idx_import_expiry (expires_at),
+  CONSTRAINT fk_import_owner FOREIGN KEY (owner_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -1088,3 +1088,17 @@ button.dot:hover:not(:disabled) {
 .module-move:disabled { opacity: 0.3; cursor: default; }
 .module-move:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 @media (hover: none) { .module-move { visibility: visible; } }
+
+.import-upload { border: 2px dashed var(--line); border-radius: 10px; padding: 18px; margin: 14px 0; background: #f5faf7; }
+.import-columns { display: grid; grid-template-columns: minmax(230px, 0.8fr) minmax(300px, 1.2fr); gap: 22px; margin-top: 16px; }
+.import-source { min-width: 0; }
+.import-source pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 65vh; overflow: auto; background: #f5f7f6; border-radius: 8px; padding: 16px; font: 13px/1.8 sans-serif; }
+.import-fields { min-width: 0; }
+.import-fields fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.import-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.import-section { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 18px; }
+.import-item { border: 1px solid var(--line); padding: 12px; border-radius: 8px; margin: 12px 0; }
+.import-visible { display: flex; align-items: center; gap: 8px; }
+.import-visible input { width: auto; }
+@media (max-width: 760px) { .import-columns, .import-grid { grid-template-columns: 1fr; } }
+.topbar select[aria-label='切换简历'] { max-width: 160px; width: auto; }

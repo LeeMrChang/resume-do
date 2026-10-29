@@ -16,6 +16,7 @@ import { exportFilename } from '@resume-do/templates';
 import { api, ApiError, type ResumeResponse, type User } from './api';
 import Preview from './Preview';
 import RichEditor from './RichEditor';
+import ImportDialog from './ImportDialog';
 import {
   AppearanceDialog,
   ConflictDialog,
@@ -76,6 +77,9 @@ function Field({
 
 export default function EditorPage({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [booted, setBooted] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [resumeList, setResumeList] = useState<{ id: string; title: string }[]>([]);
+  const [activeResumeId, setActiveResumeId] = useState('');
   const [bootError, setBootError] = useState('');
   const [title, setTitle] = useState('');
   const [doc, setDoc] = useState<ResumeDocument | null>(null);
@@ -124,12 +128,39 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     toastTimerRef.current = window.setTimeout(() => setToast(''), 2_600);
   }
 
+  function activateResume(resume: ResumeResponse) {
+    if (timerRef.current) { window.clearTimeout(timerRef.current); timerRef.current = null; }
+    if (retryRef.current) { window.clearTimeout(retryRef.current); retryRef.current = null; }
+    dirtySinceRef.current = null;
+    setConflict(null); setConflictOpen(false); setSaveErrorMessage('');
+    setSelected('basic'); setItemIndex(0); setAppearanceDraft(null);
+    setActiveResumeId(resume.id);
+    localStorage.setItem(`resume-do:active:${user.id}`, resume.id);
+    resumeIdRef.current = resume.id;
+    revisionRef.current = resume.revision;
+    versionRef.current = 0;
+    savedVersionRef.current = 0;
+    titleRef.current = resume.title || '我的简历';
+    docRef.current = resume.document;
+    appearanceRef.current = resume.appearance;
+    mutationRef.current = null;
+
+    setTitle(resume.title || '我的简历');
+    setDoc(resume.document);
+    setAppearance(resume.appearance);
+    setLastSavedAt(new Date(resume.updatedAt));
+    setStatusBoth('saved');
+    setBooted(true);
+  }
+
   async function boot() {
     try {
       const list = await api.listResumes();
       let resume: ResumeResponse;
+      setResumeList(list);
       if (list.length > 0) {
-        resume = await api.getResume(list[0].id);
+        const preferred = localStorage.getItem(`resume-do:active:${user.id}`);
+        resume = await api.getResume(list.find(item => item.id === preferred)?.id ?? list[0].id);
       } else {
         resume = await api.createResume({
           title: '我的简历',
@@ -139,21 +170,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
       }
       if (!mountedRef.current) return;
 
-      resumeIdRef.current = resume.id;
-      revisionRef.current = resume.revision;
-      versionRef.current = 0;
-      savedVersionRef.current = 0;
-      titleRef.current = resume.title || '我的简历';
-      docRef.current = resume.document;
-      appearanceRef.current = resume.appearance;
-      mutationRef.current = null;
-
-      setTitle(resume.title || '我的简历');
-      setDoc(resume.document);
-      setAppearance(resume.appearance);
-      setLastSavedAt(new Date(resume.updatedAt));
-      setStatusBoth('saved');
-      setBooted(true);
+      activateResume(resume);
     } catch (err) {
       if (!mountedRef.current) return;
       if (err instanceof ApiError && err.status === 401) {
@@ -649,6 +666,16 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
             ⚠ 版本冲突
           </button>
         )}
+        <select aria-label="切换简历" value={activeResumeId} onChange={event => {
+          const id = event.target.value;
+          void (async () => { if (await ensureSaved() != null) activateResume(await api.getResume(id)); })().catch(err => showToast(err instanceof Error ? err.message : '切换失败'));
+        }}>
+          {resumeList.map(entry => <option key={entry.id} value={entry.id}>{entry.id === activeResumeId ? title : entry.title}</option>)}
+          {!resumeList.some(entry => entry.id === activeResumeId) && <option value={activeResumeId}>{title}</option>}
+        </select>
+        <button type="button" onClick={() => {
+          void (async () => { if (await ensureSaved() != null) setImportOpen(true); })();
+        }}>导入简历</button>
         <span className="user-chip" title={user.email}>
           {user.displayName || user.email}
         </span>
@@ -658,7 +685,10 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         <button
           type="button"
           className="primary"
-          onClick={() => setDialog({ kind: 'export' })}
+          onClick={() => {
+            if (!doc.basic.name.trim() && !window.confirm('姓名为空，导出将使用占位姓名。是否继续？')) return;
+            setDialog({ kind: 'export' });
+          }}
         >
           ↓ 下载 PDF
         </button>
@@ -747,7 +777,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
               </li>
             </ul>
             <p>
-              姓名、电话等留空字段不会占据版面。隐藏模块后内容仍保留，导出只包含可见且有内容的模块。
+              姓名为空时显示占位姓名，其他联系方式留空时不输出。隐藏模块后内容仍保留，导出只包含可见且有内容的模块。
             </p>
           </aside>
         </div>
@@ -902,7 +932,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                         }} />
                       {doc.basic.photo && <button type="button" onClick={() => updateDocument(draft => { draft.basic.photo = ''; })}>移除照片</button>}
                     </div>
-                    <p className="note">PNG、JPEG 或 WebP，288KB 以内；未上传时模板显示姓名首字。</p>
+                    <p className="note">PNG、JPEG 或 WebP，288KB 以内；未上传时模板显示姓名首字。导入 PDF / DOCX 请使用顶部“导入简历”。</p>
                   </div>
                   <Field
                     label="姓名"
@@ -967,7 +997,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                     }
                   />
                   <p className="note wide">
-                    电话与邮箱填写后会进行格式校验；姓名为空时导出前会提醒，但不会阻止你继续编辑。
+                    邮箱填写后会进行格式校验；电话仅限制为 30 个字符，请自行核对号码。姓名为空时导出前会提醒。
                   </p>
                 </div>
               )}
@@ -1168,6 +1198,10 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         />
       )}
 
+      {importOpen && <ImportDialog userId={user.id} onClose={() => setImportOpen(false)} onConfirmed={resume => {
+        activateResume(resume); setResumeList(list => [{ id: resume.id, title: resume.title }, ...list]); setImportOpen(false);
+        showToast('已创建导入简历，原简历保持不变');
+      }} />}
       {dialog?.kind === 'export' && resumeIdRef.current && (
         <ExportDialog
           resumeId={resumeIdRef.current}

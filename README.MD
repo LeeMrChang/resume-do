@@ -8,7 +8,7 @@
 
 当前包含 59 套参数化简历皮肤，支持基本信息、求职意向、教育背景、工作经历、技能、项目经历、自我评价等内容编辑，以及照片上传、模块显隐和自动保存。模板参考图片位于 `docs/template-reference`，它们是设计参考，实际预览和 PDF 由项目自己的渲染代码生成。
 
-> 本文按当前源码配置编写。已有 PDF、Word 简历的导入功能尚未实现；超长段落也尚不支持自动拆分跨页，遇到溢出需手动分段或调整字号、行距。
+> 本文按当前源码配置编写。现已增加 PDF 文字层与 Word（.docx）导入、校对草稿及确认新建流程；扫描 PDF、旧版 .doc、OCR 与原版式复刻暂不支持。超长段落尚不支持自动拆分跨页，遇到溢出需手动分段或调整字号、行距。导入验收范围见[验证记录](docs/ops/2026-10-29-resume-import-verification.md)。
 
 ## 1. 技术架构
 
@@ -17,10 +17,10 @@
 | Web 前端 | React 19、TypeScript 5、Vite 6 | 编辑表单、富文本编辑、自动保存、模板选择、实时预览、导出任务状态展示 |
 | 共享数据模型 | TypeScript、Zod 3 | 简历结构、字段约束、模板编号、默认数据及校验 |
 | 共享模板引擎 | TypeScript、HTML/CSS、htmlparser2、sanitize-html | 59 套皮肤、内容块生成、富文本清洗和分页；前端与 PDF worker 共用 |
-| Java API | JDK 21、Spring Boot 3.5.16、Spring Security、Spring JDBC、jsoup | 注册登录、Session 认证、简历读写、revision 冲突检查、服务端内容校验、导出任务与下载 |
-| 数据库 | MySQL 8.4、Flyway | 存储用户、简历 JSON 和导出任务；应用启动时自动迁移表结构 |
+| Java API | JDK 21、Spring Boot 3.5.16、Spring Security、Spring JDBC、jsoup、PDFBox 3.0.8 | 注册登录、Session 认证、简历读写、revision 冲突检查、内容校验、PDF／DOCX 导入校对、导出任务与下载 |
+| 数据库 | MySQL 8.4、Flyway | 存储用户、简历 JSON、导出任务与导入草稿；应用启动时自动迁移表结构 |
 | PDF worker | Node.js 22、TypeScript、Playwright、mysql2 | 轮询数据库任务队列，启动 Chromium 渲染 A4 PDF，更新任务状态 |
-| 文件存储 | 本地磁盘／Docker 共享卷 | 保存生成的 PDF，API 与 worker 必须使用同一目录 |
+| 文件存储 | 本地磁盘／Docker 共享卷 | 保存 PDF 与 API 私有导入原文件，API 与 worker 必须使用同一数据目录 |
 | 容器部署 | Docker Compose、Nginx | 编排 MySQL、API、worker 和静态前端；Nginx 代理 `/api/` |
 
 富文本编辑目前使用浏览器 `contentEditable` 及编辑命令；项目没有接入 TipTap。数据访问使用 Spring JDBC，没有使用 MyBatis 或 JPA。任务队列使用 MySQL 表，不要求额外安装 Redis、RabbitMQ 或 Kafka。
@@ -52,7 +52,7 @@ resume-do/
 │   └── templates/           # 模板目录、样式、内容块及分页
 ├── deploy/                  # Dockerfile、Compose、Nginx 配置
 ├── docs/                    # 需求、实现计划、参考图库、验证记录
-├── data/                    # 本地运行数据，PDF 位于 exports/；Git 忽略
+├── data/                    # 本地运行数据，PDF 位于 exports/，临时导入位于 imports/；Git 忽略
 ├── .env.example             # 环境变量示例，不会自动加载
 ├── package.json             # npm Workspaces 与根目录命令
 └── package-lock.json        # Node 依赖锁定文件
@@ -126,7 +126,7 @@ GRANT ALL PRIVILEGES ON resume_do.* TO 'resume_do'@'127.0.0.1';
 mysql -h 127.0.0.1 -P 3306 -u resume_do -p resume_do
 ```
 
-只需要创建数据库和用户。后端首次启动时，Flyway 自动执行 `apps/api/src/main/resources/db/migration/V1__init.sql`，创建 `users`、`resumes`、`export_jobs` 等表。不要额外手动执行同一迁移 SQL。
+只需要创建数据库和用户。后端首次启动时，Flyway 自动执行 `apps/api/src/main/resources/db/migration` 下的迁移：V1 创建用户、简历和导出任务，V2 新增 `import_jobs`。不要手动重复执行迁移 SQL。已有部署升级前先停止 API 和 worker，备份数据库与数据目录，再启动新版执行 V2；不要改写已有 V1。
 
 ## 6. 配置环境变量
 
@@ -153,7 +153,7 @@ RESUME_DO_BROWSER_CHANNEL=
 
 本地示例密码为 `change_me`，请与建库时的密码保持一致。密码含空格、`$` 等字符时，加载前使用适当的 shell 引号。
 
-Spring Boot 和 worker 不自动加载根目录 `.env`。每个用于启动 API 或 worker 的终端，先在项目根目录执行：
+Spring Boot 不自动加载根目录 `.env`；根命令 `npm run dev:worker` / `npm run dev` 会自动加载它，直接运行 worker workspace 命令仍需手动加载。每个启动 API 或直接运行 worker 的终端，先在项目根目录执行：
 
 ```bash
 set -a
@@ -198,6 +198,18 @@ IDEA 的 Java 运行配置同样需要单独填写这些变量，不会继承另
 ## 7. 启动本地开发环境
 
 需要运行 **MySQL + Java API + Web + PDF worker**。MySQL 先启动，随后启动 API；Web 与 worker 可以在各自终端运行。
+
+推荐启动方式：API 仍按下面方式在 IDEA 或终端启动；Node 进程可在根目录统一启动，避免遗漏 PDF worker：
+
+```bash
+# 前置：npm ci 已完成；根 .env 已配置为与 API 相同的数据库和数据目录
+# 首次安装一次浏览器
+npm run install:browser -w @resume-do/pdf-worker
+# 同时运行 Web 与 PDF worker，Ctrl+C 同时停止
+npm run dev
+```
+
+使用本机 Chrome 时，在根 `.env` 设置 `RESUME_DO_BROWSER_CHANNEL=chrome` 后执行 `npm run dev`。不要同时再运行单独的 Web / worker 命令，否则会重复启动。以下分进程步骤仍可用于分别调试。
 
 ### 7.1 Java API：终端一
 
@@ -261,6 +273,8 @@ $env:RESUME_DO_BROWSER_CHANNEL = 'chrome'
 npm run dev:worker
 ```
 
+根目录 `npm run dev:worker` 会加载根 `.env`，并在 `apps/pdf-worker` 工作目录启动；已有终端环境变量优先。修改 `.env` 后需重新运行命令。
+
 看到 `pdf worker started` 只代表进程启动；还应确认没有持续出现 `claim failed` 数据库错误。worker 本身不监听 HTTP 端口，因此不能通过查看 8080 来判断 worker 是否运行。
 
 ### 7.4 首次使用与检查
@@ -270,6 +284,20 @@ npm run dev:worker
 3. 打开“更换模板”，选择模板后点击“应用”；取消会丢弃本次排版草稿。
 4. 点击“下载 PDF”，等待 worker 完成并自动下载。worker 日志应出现 `export ready`。
 5. 关闭三个运行终端中的服务可按 `Ctrl+C`。Session 保存在 API 进程内，重启后端后可能需要重新登录。
+
+### 7.5 导入已有简历
+
+1. 登录后点击顶栏“导入简历”，选择或拖入单份 `.pdf` / `.docx`，上限 20MiB。PDF 必须有文字层；`.doc` 请先另存为 `.docx`。
+2. API 在本地解析，左侧显示提取原文并提供原文件下载，右侧校对姓名、联系方式、求职意向及每条经历。日期和单位无法可靠识别时留空，不补写事实；未归类内容进入“待整理内容”。
+3. 修改字段或正文、调整条目模块归属。停止输入约 700ms 后保存导入草稿；“保存草稿并关闭”不创建正式简历。刷新后再次打开导入可恢复当前用户尚未过期的草稿。
+4. 核对后点“确认导入为新简历”，先保存最新草稿再新建，进入现有编辑器。顶栏可切换回原简历；重复上传同一文件会创建另一份简历，不合并或覆盖旧内容。同一任务重复确认只返回此前新建的简历。
+5. 后续编辑、保存、模板切换和 PDF 导出沿用现有流程。**解析由 API 执行，导入本身不需要额外进程；下载 PDF 仍需要 worker。**
+
+解析失败时原文件保留，支持重试或手动填写；重试不会覆盖已保存的人工校对。部分读取失败时明确提示并保留已读取文字，请对照原文件补全后再确认。上传页不调用外部 AI，不执行宏或访问上传文档中的外部链接。
+
+临时文件和草稿 24 小时到期后不可访问，API 每分钟分批清理；确认或放弃后立即尝试删除原文件，删除失败会记录日志并重试。服务关闭时不执行清理；重新启动后继续。每账号最多保留约 20 个未确认任务。不要把业务文件手动放进 `data/imports`，该目录由清理任务管理。
+
+安全资源上限：PDF 100 页；DOCX 最多 512 项、单项展开不超过 10MiB、总展开不超过 50MiB；提取文字不超过 100000 字。超限会明确失败，不能以截断内容冒充成功。解析任务约 30 秒超时，原文件保留供重试。双栏文字顺序、表格内容和无法识别的日期仍需人工核对，不承诺还原照片与原版式。重复日期标题可能拆成重复经历；自定义标题和页码可能进入相邻正文，确认前需人工整理。实测范围见[导入验收记录](docs/ops/2026-10-29-resume-import-verification.md)。
 
 ## 8. IntelliJ IDEA 配置
 
@@ -313,6 +341,12 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml logs -f resume-api 
 - **旧 Compose 数据卷不会自动接入新项目。** 升级前必须先备份并迁移数据库及文件卷，详见迁移说明。MySQL 镜像初始化变量只在空数据目录生效，修改密码变量不会更改现存数据库账号密码。
 - 当前提供 HTTP；公网部署需配置域名、HTTPS、安全 Cookie 和自己的密码。
 
+### 9.1 过期 PDF 清理
+
+worker 启动后及此后每分钟检查过期导出，每批最多 50 条，仅删除已完成且 `expires_at` 已到期的 PDF。删除成功后清空任务的 `file_key`，保留任务、快照和审计字段；文件已不存在时可安全重试。清理失败会记录 `export cleanup failed` 或 `export cleanup file failed` 并保留记录重试。停止 worker 时不执行清理，积压超过 50 条时会分批处理。
+
+下载有效期由 `RESUME_DO_DOWNLOAD_TTL_MINUTES` 控制，默认 10 分钟；过期文件删除后无法恢复，需重新导出。清理不删除简历、用户或整个数据卷，也不清理孤立文件和 `.tmp` 文件。本轮已验证文件删除边界，尚未完成真实 MySQL 与多 worker 清理联调。
+
 ## 10. 测试与构建
 
 以下 npm 命令在项目根目录执行：
@@ -322,6 +356,15 @@ npm run typecheck   # 检查全部 TypeScript workspace
 npm test            # schema、模板与 worker 快照测试；默认跳过真实浏览器 PDF 测试
 npm run build       # 前端生产构建，输出 apps/web/dist
 ```
+
+浏览器回归测试（项目根目录，需要本机 Chrome）：
+
+```bash
+npm run build
+npm run test:e2e
+```
+
+该测试直接加载生产构建，通过 Playwright 拦截请求提供内存 API，不启动 HTTP 监听、不连接真实数据库。覆盖 A01 保存后重载、A05 模板与字号取消／应用，以及 A06 的 1／3／5 页预览、块边界和超长单段溢出提示；不代表真实 API、数据库与 PDF 下载全链路通过。测试当前默认使用 Chrome；若使用已安装的 Playwright Chromium，Bash/Zsh 设置 `RESUME_DO_BROWSER_CHANNEL=chromium`，PowerShell 设置 `$env:RESUME_DO_BROWSER_CHANNEL = 'chromium'` 后运行。本轮浏览器启动被系统限制中断，尚未跑通。
 
 Java 测试与打包：
 
@@ -343,12 +386,25 @@ RESUME_DO_BROWSER_CHANNEL=chrome npm run test:pdf -w @resume-do/pdf-worker
 RESUME_DO_BROWSER_CHANNEL=chrome RESUME_DO_PDF_TEST_OUTPUT_DIR=/你的绝对路径/pdf-check npm run test:pdf -w @resume-do/pdf-worker
 ```
 
+PowerShell 下可绕过当前 `test:pdf` 脚本中的 POSIX 赋值语法，在项目根目录执行：
+
+```powershell
+$env:RESUME_DO_RUN_PDF_TESTS = '1'
+$env:RESUME_DO_BROWSER_CHANNEL = 'chrome'
+npm test -w @resume-do/pdf-worker
+```
+
 测试覆盖 59 套模板生成、多页照片内容与侧栏溢出拒绝。编写了测试用例不等于本机已通过；请以自己的执行结果及实际 PDF 检查为准。API 与 worker 的模板／渲染版本必须一致升级，不能只更新其中一个进程。
+
+导出界面区分“排队等待 PDF 服务接单”和“生成中”。未进入渲染时等待约 30 秒会提示检查 worker；进入渲染后总等待最多约 3 分钟，单次查询最多 15 秒。超时保留原任务，可点击“检查进度”继续查询；只有终态失败或过期后重试才创建新任务。前端超时不代表服务器任务已取消。
 
 ## 11. 常见问题
 
 | 现象 | 排查方式 |
 | --- | --- |
+| Maven 提示插件要求版本 ≥ 3.6.3 | 终端正在使用旧 Maven；运行 `mvn -v`，切换到 Maven 3.9.x 和 JDK 21。不要降级项目编译插件 |
+| 导入接口返回错误或不存在 | 在 IDEA 重载 Maven 并完整重启 API，确认日志包含 V2 迁移及最新主类启动；仅热替换旧进程不会注册新 Controller |
+| 导入提示损坏、密码保护或扫描版 | 根据明确错误处理；解密、另存 DOCX 或提供有文字层的 PDF，原文件与人工校对保留供重试 |
 | `Port 8080 was already in use` | 已有 API 或其他服务占用端口；先确认占用进程，避免重复启动 |
 | `env: node: Bad CPU type in executable` | Node 架构与电脑不匹配，或终端仍使用旧 PATH；安装正确架构并新开终端 |
 | Java 提示源／目标版本不一致 | 检查项目 SDK、模块 SDK、编译目标、Maven JDK 是否都为 21 |
@@ -372,5 +428,7 @@ lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
 Windows 可使用 `netstat -ano | findstr :8080`。不要直接强制结束所有 Java / Node 进程，以免影响其他项目。
+
+A06 当前仅部分完成：按段落／列表项分页，超长单段提示并阻止导出，尚未实现逐行跨页。原验收要求仍保留，本轮未豁免，也不标记全部通过。浏览器回归和 Docker 字体差异尚未完成验收，详见[本轮修复与验证记录](docs/ops/2026-10-29-review-follow-up.md)。
 
 更详细的本地测试记录见 [本地验证记录](docs/ops/2026-10-28-resume-p0-local-verification.md)。需求与实现计划位于 [docs/superpowers](docs/superpowers)。

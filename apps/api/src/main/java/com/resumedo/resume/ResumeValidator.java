@@ -129,7 +129,7 @@ public class ResumeValidator {
                     throw ApiException.badRequest("开始年月不能晚于结束年月");
                 }
                 String body = text(item, "body", 20_000, "正文");
-                String clean = Jsoup.clean(body, SAFELIST);
+                String clean = sanitizeBody(body);
                 item.put("body", clean);
                 total += Jsoup.parse(clean).text().length();
             }
@@ -151,6 +151,16 @@ public class ResumeValidator {
         }
 
         return new Validated(document, appearance, schemaVersion, templateId);
+    }
+
+    public static String sanitizeBody(String body) {
+        // contentEditable emits div on Enter. Keep paragraph boundaries without
+        // introducing pretty-print whitespace into persisted HTML.
+        var fragment = Jsoup.parseBodyFragment(body);
+        fragment.select("div").tagName("p");
+        fragment.outputSettings().prettyPrint(false);
+        return Jsoup.clean(fragment.body().html(), "", SAFELIST,
+                new org.jsoup.nodes.Document.OutputSettings().prettyPrint(false));
     }
 
     private static ObjectNode requireObject(ObjectNode parent, String field, String label) {

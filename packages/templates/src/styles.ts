@@ -57,6 +57,9 @@ export const RESUME_CSS = `
   color: #5f6b75;
 }
 .r-intro .r-meta span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.r-intro .r-meta .r-contact { display: inline-flex; align-items: baseline; gap: 5px; }
+.r-contact-icon { width: 1em; height: 1em; flex: none; align-self: baseline; position: relative; top: 0.12em; color: var(--r-accent); }
+.hdr-band .r-contact-icon { color: inherit; }
 .r-intro h1, .r-intent, .r-record-title, .r-role, .r-section-title { overflow-wrap: anywhere; }
 .r-record-title { min-width: 0; }
 .r-sidebar .r-record { flex-wrap: wrap; gap: 2px 8px; }
@@ -303,6 +306,7 @@ export const RESUME_CSS = `
   margin-bottom: 8px;
 }
 .r-sidebar .r-intro .r-intent { color: var(--r-side-accent); font-weight: 600; }
+.r-sidebar .r-contact-icon { color: var(--r-side-accent); }
 .r-sidebar .r-intro .r-meta {
   flex-direction: column;
   gap: 4px;

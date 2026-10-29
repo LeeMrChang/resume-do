@@ -8,7 +8,7 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
     "install:browser": "playwright install chromium",
-    "test": "node --import tsx --test src/renderer.test.ts",
+    "test": "node --import tsx --test src/*.test.ts",
     "test:pdf": "RESUME_DO_RUN_PDF_TESTS=1 node --import tsx --test src/renderer.test.ts"
   },
   "dependencies": {

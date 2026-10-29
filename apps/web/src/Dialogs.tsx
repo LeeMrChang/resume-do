@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createDefaultAppearance, type ResumeAppearance } from '@resume-do/schema';
 import { TEMPLATE_CATALOG, TEMPLATE_GROUPS, normalizeTemplateId, renderThumbnailFragment } from '@resume-do/templates';
 import { api, ApiError, type ExportJob } from './api';
+import { waitForExport } from './exportPolling';
 
 export function Modal({
   title,
@@ -383,35 +384,36 @@ export function ExportDialog({
   useEffect(() => {
     if (phase !== 'working' || !job) return;
     let alive = true;
-    const timer = window.setInterval(async () => {
-      try {
-        const next = await api.getExport(job.id);
+    const controller = new AbortController();
+    void waitForExport(job, api.getExport, next => { if (alive) setJob(next); }, controller.signal)
+      .then(next => {
         if (!alive) return;
-        setJob(next);
         if (next.status === 'ready') {
           setPhase('ready');
-          window.clearInterval(timer);
           if (!downloadedRef.current) void downloadFile(next);
-        } else if (next.status === 'failed' || next.status === 'expired') {
+        } else {
           setPhase('failed');
           setError(next.errorMessage || (next.status === 'expired' ? '文件已过期，请重新导出。' : '导出失败，请重试。'));
-          window.clearInterval(timer);
         }
-      } catch (err) {
+      })
+      .catch(err => {
         if (!alive) return;
         setPhase('failed');
-        setError(messageOf(err));
-        window.clearInterval(timer);
-      }
-    }, 1_000);
+        setError(err instanceof Error ? err.message : messageOf(err));
+      });
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, job?.id]);
 
   function retry() {
+    if (job?.status === 'queued' || job?.status === 'rendering') {
+      setError('');
+      setPhase('working');
+      return;
+    }
     keyRef.current = '';
     setPhase('preparing');
     void start();
@@ -448,7 +450,7 @@ export function ExportDialog({
           <div className="progress" aria-hidden="true">
             <span />
           </div>
-          <p className="note">正在生成 PDF，可以保持此窗口打开，完成后会自动下载。</p>
+          <p className="note">{job?.status === 'queued' ? '任务已排队，正在等待 PDF 服务接单…' : '正在生成 PDF，完成后会自动下载。'}</p>
         </>
       )}
 
@@ -491,7 +493,7 @@ export function ExportDialog({
               返回编辑
             </button>
             <button type="button" className="primary" onClick={retry}>
-              重试
+              {job?.status === 'queued' || job?.status === 'rendering' ? '检查进度' : '重试'}
             </button>
           </footer>
         </>

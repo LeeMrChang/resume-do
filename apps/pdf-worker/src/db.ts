@@ -1,5 +1,6 @@
 import mysql, { type PoolConnection, type RowDataPacket } from 'mysql2/promise';
 import { config } from './config';
+import { removeExpiredFile } from './cleanup';
 
 function decodeSnapshot(value: unknown): unknown {
   if (typeof value === 'string') return JSON.parse(value);
@@ -136,4 +137,33 @@ export async function markFailed(
 export async function closePool(connection?: PoolConnection): Promise<void> {
   connection?.release();
   await pool.end();
+}
+
+// Lock each bounded batch so multiple workers do not clean the same row.
+// Keep the expired job/snapshot for audit; clear the key only after unlink succeeds.
+export async function cleanupExpiredExports(): Promise<void> {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id, file_key FROM export_jobs
+       WHERE status = 2 AND expires_at <= UTC_TIMESTAMP(3) AND file_key IS NOT NULL
+       ORDER BY id LIMIT 50 FOR UPDATE SKIP LOCKED`,
+    );
+    for (const row of rows) {
+      try {
+        await removeExpiredFile(config.storageDir, String(row.file_key));
+      } catch (error) {
+        console.error('export cleanup file failed', { jobId: row.id, error: String(error) });
+        continue;
+      }
+      await connection.execute('UPDATE export_jobs SET file_key = NULL WHERE id = ?', [row.id]);
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }

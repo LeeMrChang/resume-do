@@ -9,6 +9,11 @@ server:
         secure: false
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
+      file-size-threshold: 0
   application:
     name: resume-do
   output:

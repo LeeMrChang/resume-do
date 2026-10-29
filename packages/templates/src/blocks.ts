@@ -3,6 +3,7 @@ import { stripTags } from '@resume-do/schema';
 import { getTemplateSpec } from './catalog';
 import { escapeHtml, richBlocks } from './rich';
 import type { RenderInput, ResumeBlock } from './types';
+import { contactIcon, type ContactIcon } from './icons';
 
 function hasText(html: string): boolean {
   return stripTags(html).trim().length > 0;
@@ -26,9 +27,8 @@ function headerBlock(input: RenderInput): ResumeBlock {
   const intentLine = [intent.role, intent.city, intent.salary, intent.arrival]
     .filter(Boolean)
     .join(' · ');
-  const metaItems = [basic.gender, basic.city, basic.experienceYears, basic.phone, basic.email].filter(
-    Boolean,
-  );
+  const metaKeys: ContactIcon[] = ['gender', 'city', 'experienceYears', 'phone', 'email'];
+  const metaItems = metaKeys.filter(key => basic[key]).map(key => ({ key, value: basic[key] }));
   const spec = getTemplateSpec(appearance.templateId);
   const showPhoto = spec.photo !== false;
   const name = basic.name || '你的姓名';
@@ -44,7 +44,7 @@ function headerBlock(input: RenderInput): ResumeBlock {
     `<h1>${escapeHtml(name)}</h1>`,
     intentLine ? `<p class="r-intent">${escapeHtml(intentLine)}</p>` : '',
     metaItems.length
-      ? `<div class="r-meta">${metaItems.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+      ? `<div class="r-meta">${metaItems.map(({ key, value }) => `<span class="r-contact">${contactIcon(key)}<span>${escapeHtml(value)}</span></span>`).join('')}</div>`
       : '',
     '</div>',
     '</div>',
@@ -55,7 +55,7 @@ function headerBlock(input: RenderInput): ResumeBlock {
     kind: 'header',
     keepWithNext: false,
     html,
-    plainText: [name, intentLine, ...metaItems].filter(Boolean).join(' '),
+    plainText: [name, intentLine, ...metaItems.map(item => item.value)].filter(Boolean).join(' '),
   };
 }
 

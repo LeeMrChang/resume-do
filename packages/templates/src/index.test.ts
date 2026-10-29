@@ -21,6 +21,18 @@ test('builds a header and skips hidden sections', () => {
   assert.ok(!blocks.some((item) => item.plainText === '实习经验'));
 });
 
+test('contact icons use vector paths, omit empty fields and keep text free of font glyphs', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.basic.phone = '13800000000';
+  document.basic.email = '';
+  const header = buildBlocks({ document, appearance: SAMPLE_APPEARANCE })[0];
+  assert.match(header.html, /<svg[^>]*data-icon="phone"[^>]*aria-hidden="true"/);
+  assert.ok(!header.html.includes('data-icon="email"'));
+  assert.ok(header.plainText.includes('13800000000'));
+  assert.ok(!header.plainText.includes('<svg'));
+  assert.ok(!/[\uE000-\uF8FF\uFFFD]/u.test(header.html));
+});
+
 test('sanitizes scripts, event handlers and unsafe links', () => {
   const clean = sanitizeRichText(
     '<p onclick="alert(1)">Hello<script>alert(1)</script><a href="javascript:alert(1)">x</a></p>',
@@ -129,4 +141,12 @@ test('empty body and trailing keep flag do not add nonexistent indexes', () => {
 test('all 59 skins have distinct visual configuration, not duplicate IDs only', () => {
   const styles = TEMPLATE_CATALOG.map(({ id, referenceId, name, group, ...style }) => JSON.stringify(style));
   assert.equal(new Set(styles).size, 59);
+});
+
+
+test('preserves contentEditable paragraphs and inline whitespace after reload', () => {
+  const clean = sanitizeRichText('第一行<div>第二行 <b>加粗</b> 结尾</div><div><br></div><div>第三行</div>');
+  assert.equal(clean, '第一行<p>第二行 <b>加粗</b> 结尾</p><p><br /></p><p>第三行</p>');
+  assert.equal(sanitizeRichText(clean), clean);
+  assert.deepEqual(richBlocks(clean, 'reload').map(b => b.plainText), ['第一行', '第二行 加粗 结尾', '第三行']);
 });

@@ -10,10 +10,12 @@
   ],
   "scripts": {
     "dev:web": "npm run dev -w @resume-do/web",
-    "dev:worker": "npm run dev -w @resume-do/pdf-worker",
+    "dev:worker": "node --watch --import tsx scripts/dev-worker.mjs",
     "build": "npm run build -w @resume-do/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "node --import tsx --test apps/web/tests/*.e2e.ts",
+    "dev": "node scripts/dev.mjs"
   },
   "engines": {
     "node": ">=22"

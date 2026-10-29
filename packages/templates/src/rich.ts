@@ -1,7 +1,6 @@
 import { parseDocument, DomUtils } from 'htmlparser2';
 import type { AnyNode, Element } from 'domhandler';
 import sanitizeHtml from 'sanitize-html';
-import { stripTags } from '@resume-do/schema';
 import type { ResumeBlock } from './types';
 
 const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'a'];
@@ -13,6 +12,7 @@ export function sanitizeRichText(html: string): string {
     allowedSchemes: ['http', 'https', 'mailto'],
     disallowedTagsMode: 'discard',
     transformTags: {
+      div: 'p',
       a: (tagName, attribs) => ({
         tagName,
         attribs: {
@@ -34,7 +34,7 @@ export function escapeHtml(value: string): string {
 }
 
 function textOfHtml(html: string): string {
-  return stripTags(html).replace(/\s+/g, ' ').trim();
+  return DomUtils.textContent(parseDocument(html)).replace(/\s+/g, ' ').trim();
 }
 
 function makeBlock(

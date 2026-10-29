@@ -163,6 +163,27 @@ class ResumeServiceTest {
                         .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
+    @Test
+    void saveAndReloadPreservesParagraphsAndInlineSpaces() throws Exception {
+        var document = TestFixtures.validDocument();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) document.path("sections").get(0).path("items").get(0))
+                .put("body", "第一行<div>第二行 <b>加粗</b> 结尾</div><div>第三行</div>");
+        var stored = new java.util.concurrent.atomic.AtomicReference<>(row(1, PUBLIC_ID, 5, "old", "我的简历"));
+        when(repository.find(OWNER, PUBLIC_ID)).thenAnswer(invocation -> Optional.of(stored.get()));
+        when(repository.update(eq(1L), eq(OWNER), eq(5L), anyString(), anyString(), anyString(),
+                anyInt(), anyString(), anyInt(), eq(6L), eq("paragraph")))
+                .thenAnswer(invocation -> {
+                    stored.set(new ResumeRow(1, PUBLIC_ID, OWNER, invocation.getArgument(3),
+                            invocation.getArgument(4), invocation.getArgument(5), 1, "clean", 2,
+                            6, "paragraph", CREATED, UPDATED));
+                    return 1;
+                });
+        service.update(OWNER, PUBLIC_ID, new UpdateRequest(5L, "paragraph", null, document, null));
+        var reloaded = service.get(OWNER, PUBLIC_ID);
+        assertThat(reloaded.document().path("sections").get(0).path("items").get(0).path("body").asText())
+                .isEqualTo("第一行<p>第二行 <b>加粗</b> 结尾</p><p>第三行</p>");
+    }
+
     private static ResumeRow row(
             long id, String publicId, long revision, String lastMutationId, String title) {
         return new ResumeRow(

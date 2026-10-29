@@ -1,5 +1,11 @@
 # 简历编辑与 PDF 导出 P0 本地验证记录
 
+> 本文为历史验证记录。旧库 `resume_dev`、旧环境变量 `BROWSER_CHANNEL` / `PDF_TEST_OUTPUT_DIR` 及个人工具路径不作为当前启动指引；请按根 README 使用 `resume_do` 与 `RESUME_DO_*`。下文各阶段通过结果仅适用于当时版本。
+>
+> **Docker 字体差异未验证。** 当前预览依赖浏览器系统字体，worker 镜像安装 Noto CJK；尚未证明 macOS、Windows 和容器中的换行、页数一致。
+>
+> 2026-10-29 修复结果见[本轮修复与验证记录](2026-10-29-review-follow-up.md)。
+
 日期：2026-10-28
 环境：macOS 27.0.0（arm64）、MySQL 8.4.11（Homebrew，socket `/tmp/mysql.sock`）、JDK 21（Zulu 21.0.8）、Maven 3.9.9、Node.js 22.23.2、Google Chrome（Playwright `BROWSER_CHANNEL=chrome`）。
 

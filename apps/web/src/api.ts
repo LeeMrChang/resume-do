@@ -66,7 +66,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     credentials: 'include',
     ...init,
     headers: {
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...init.headers,
     },
   });
@@ -113,7 +113,7 @@ export const api = {
     resumeId: string,
     payload: { revision: number; idempotencyKey: string; filename?: string },
   ) => request<ExportJob>(`/api/resumes/${resumeId}/exports`, json(payload)),
-  getExport: (id: string) => request<ExportJob>(`/api/exports/${id}`),
+  getExport: (id: string, signal?: AbortSignal) => request<ExportJob>(`/api/exports/${id}`, { signal }),
   downloadExport: async (id: string, filename: string) => {
     const response = await fetch(`/api/exports/${id}/file`, { credentials: 'include' });
     if (!response.ok) {
@@ -134,4 +134,35 @@ export const api = {
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2_000);
   },
+};
+
+export interface ImportDraft {
+  title: string;
+  document: ResumeDocument;
+  appearance: ResumeAppearance;
+}
+export interface ImportJob {
+  id: string;
+  filename: string;
+  status: 'processing' | 'ready' | 'failed' | 'confirmed' | 'cancelled' | 'expired';
+  sourceText?: string;
+  draft?: ImportDraft;
+  version: number;
+  errorCode?: string;
+  message?: string;
+  resumeId?: string;
+  expiresAt: string;
+}
+export const importApi = {
+  list: () => request<ImportJob[]>('/api/imports'),
+  get: (id: string) => request<ImportJob>(`/api/imports/${id}`),
+  upload: (file: File) => {
+    const body = new FormData(); body.append('file', file);
+    return request<ImportJob>('/api/imports', { method: 'POST', body });
+  },
+  save: (id: string, version: number, draft: ImportDraft) =>
+    request<ImportJob>(`/api/imports/${id}`, { method: 'PATCH', body: JSON.stringify({ version, draft }) }),
+  retry: (id: string) => request<ImportJob>(`/api/imports/${id}/retry`, { method: 'POST' }),
+  confirm: (id: string, version: number) => request<ResumeResponse>(`/api/imports/${id}/confirm`, json({ version })),
+  cancel: (id: string) => request<void>(`/api/imports/${id}`, { method: 'DELETE' }),
 };

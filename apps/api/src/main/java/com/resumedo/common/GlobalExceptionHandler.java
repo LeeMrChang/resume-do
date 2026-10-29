@@ -44,6 +44,12 @@ public class GlobalExceptionHandler {
                 .body(new ApiError("DUPLICATE", "数据已存在", Map.of()));
     }
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleUploadTooLarge(Exception exception) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ApiError("FILE_TOO_LARGE", "文件不能超过 20MB", Map.of()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleUnexpected(Exception exception) {
         log.error("Unhandled API error", exception);

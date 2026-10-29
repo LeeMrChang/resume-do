@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config';
-import { claimJob, heartbeat, markFailed, markReady, pool, type JobRow } from './db';
+import { claimJob, cleanupExpiredExports, heartbeat, markFailed, markReady, pool, type JobRow } from './db';
 import { PdfRenderer, RenderError, parseSnapshot } from './renderer';
 
 const renderer = new PdfRenderer();
@@ -104,7 +104,16 @@ async function main(): Promise<void> {
     storageDir: config.storageDir,
   });
 
+  let nextCleanupAt = 0;
   while (running) {
+    if (Date.now() >= nextCleanupAt) {
+      nextCleanupAt = Date.now() + 60_000;
+      try {
+        await cleanupExpiredExports();
+      } catch (error) {
+        console.error('export cleanup failed', { error: String(error) });
+      }
+    }
     let job: JobRow | null = null;
     try {
       job = await claimJob();
