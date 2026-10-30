@@ -52,3 +52,18 @@ npm run dev:worker
 预期 worker 日志出现 `pdf worker started`，随后任务被领取并出现 `export ready`；若持续 `claim failed`，核对数据库配置与连接错误；若 `export failed`，保留错误码继续排查。回到页面点击“检查进度”，确认任务 ready、浏览器开始下载；打开 PDF 检查中文和 A4 排版后，才算主链路验收通过。
 
 本轮没有变更业务数据、修改历史任务状态或通过删任务掩盖排队问题。浏览器验证创建了一条使用当前已保存简历的导出任务，不修改简历正文。
+
+## 5. 2026-10-30 复发：随包 Chromium 缺失（补录）
+
+现象：导出任务 19（`a344e0b6…`，01:30:49Z 创建）3 次尝试后以 `RENDER_FAILED` 终态失败，每次约 19–24ms；页面在退避重试期间仍显示“任务已排队”。
+
+原因：根目录无 `.env`，worker 未设置 `RESUME_DO_BROWSER_CHANNEL`；`~/Library/Caches/ms-playwright` 只有空的 `b` 目录，未安装随包 Chromium，Playwright 启动浏览器即失败，24ms 内结束，未进入排版。
+
+本轮已在工作区修改（尚未提交）：
+
+- `ensureBrowser` 在未显式指定 channel、报 “Executable doesn't exist” 且 macOS 存在 `/Applications/Google Chrome.app` 时改用系统 Chrome，并打印切换日志；其他启动失败返回 `BROWSER_UNAVAILABLE`（确定性失败，不重试）与原异常提示。
+- worker 启动日志打印实际浏览器策略；`export failed` 日志附带原始异常。
+- `.env.example` 与 README 说明该回退。
+
+验证：用任务 19 的同一快照在独立进程执行渲染成功（1,116,958 字节，998ms，日志出现 Chrome 回退）。随后强制 worker 重新加载当前代码。页面端完整“点击导出→下载”尚未由本轮复验，需以实际导出结果为准。
+
