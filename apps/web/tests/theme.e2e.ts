@@ -99,7 +99,8 @@ test('theme switch defaults to dark, persists per user, follows the system and k
       page.waitForFunction(
         ([sel, prop, expected]) => {
           const node = document.querySelector(sel);
-          return Boolean(node) && getComputedStyle(node).getPropertyValue(prop) === expected;
+          if (!node) return false;
+          return getComputedStyle(node).getPropertyValue(prop) === expected;
         },
         [selector, property, value],
       );
@@ -120,9 +121,9 @@ test('theme switch defaults to dark, persists per user, follows the system and k
 
     // Paper invariant and boundaries in dark mode.
     assert.equal(await computed('.pages .r-page', 'background-color'), 'rgb(255, 255, 255)');
-    assert.equal(await computed('.canvas', 'background-color'), 'rgb(1, 4, 9)');
-    assert.equal(await computed('.app-shell .topbar', 'background-color'), 'rgb(22, 27, 34)');
-    assert.equal(await computed('body', 'color'), 'rgb(230, 237, 243)');
+    assert.equal(await computed('.canvas', 'background-color'), 'rgb(17, 24, 29)');
+    assert.equal(await computed('.app-shell .topbar', 'background-color'), 'rgb(36, 43, 50)');
+    assert.equal(await computed('body', 'color'), 'rgb(237, 241, 243)');
     await page.screenshot({ path: '/tmp/resume-do-theme-dark.png' });
 
     // Dialogs and template thumbnails stay readable and keep white paper.
@@ -130,7 +131,7 @@ test('theme switch defaults to dark, persists per user, follows the system and k
     await page.locator('.dialog').waitFor();
     await page.locator('.template-thumbnail').first().waitFor();
     assert.equal(await computed('.modal', 'background-color'), 'rgba(1, 4, 9, 0.7)');
-    assert.equal(await computed('.dialog', 'background-color'), 'rgb(22, 27, 34)');
+    assert.equal(await computed('.dialog', 'background-color'), 'rgb(36, 43, 50)');
     assert.equal(await computed('.template-thumbnail', 'background-color'), 'rgb(255, 255, 255)');
     await page.screenshot({ path: '/tmp/resume-do-theme-dialog-dark.png' });
     await page.locator('.dialog .close').click();
@@ -206,7 +207,19 @@ test('first paint uses the stored theme before the session request resolves', { 
 
     await page.locator('.login-shell').waitFor({ timeout: 10_000 });
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+    assert.equal((await page.locator('.login-brand').textContent())?.replace(/\s+/g, ''), '简ResumeDo');
+    assert.equal((await page.locator('.login-pill').textContent())?.trim(), '本地优先 · 简历数据不出你的设备');
+    assert.equal(await page.locator('.login-card .login-logo').isVisible(), true);
     await page.screenshot({ path: '/tmp/resume-do-theme-login-light.png' });
+
+    await page.locator('.theme-toggle button[aria-label="深色"]').click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+    await page.waitForFunction(() => {
+      const card = document.querySelector('.login-card');
+      if (!card) return false;
+      return getComputedStyle(card).backgroundColor === 'rgb(36, 43, 50)';
+    });
+    await page.screenshot({ path: '/tmp/resume-do-theme-login-dark.png' });
   } finally {
     await browser.close();
   }

@@ -316,7 +316,7 @@ npm run dev:worker
 
 正文编辑器下方提供「AI 润色」「精炼内容」两个按钮。每次发送前都会展示将上传的纯文本正文和意向职位，用户勾选同意后才调用 `POST /api/ai/rewrite`；不会发送姓名、电话、邮箱、照片、完整简历或 PDF。接口在默认与生产配置下关闭，`local` 开发配置默认启用但密钥只从被忽略的本机文件或环境变量读取，可提交 YAML 不保存真实密钥；未启用或未配置时显示接口返回的中文原因，不产生模型调用。返回结果同时展示原文、建议与风险提示，可取消、重新生成或采用；生成期间正文被修改时，采用前会再次确认。采用后进入现有编辑与自动保存流程，AI 接口本身不写简历。本期不提供 AI 生成或整份简历优化。
 
-界面提供「浅色 / 深色 / 跟随系统」三态主题，首次访问默认深色（GitHub Dark 色彩体系）。切换即时生效；登录后写入 `users.theme_preference`（Flyway `V5__user_theme.sql`），未登录使用 `localStorage` 的 `resume-do:theme` 兜底，登录后以服务端值为准。首屏内联脚本在 React 启动前应用主题，避免闪白。应用外壳、弹窗、空状态与提示条共用一套 token；A4 预览、模板缩略图、原件画布与导出的 PDF 始终为白色纸张，深色下通过描边与阴影区分纸张边界。接口为 `GET /api/auth/me` 返回 `themePreference`，`PATCH /api/auth/me` 接受 `{ "themePreference": "light" | "dark" | "system" }`，非法值返回 400，详见[主题偏好接口](docs/api/auth-me.md)与[暗黑主题验证记录](docs/ops/2026-10-30-dark-theme-verification.md)。
+界面提供「浅色 / 深色 / 跟随系统」三态主题，首次访问默认深色，深色取自 Ardot「Resume Do 封面 V2 登录同源版」调色板（页面 `#171D23`、面板 `#242B32`、输入框 `#333C45`、正文 `#EDF1F3`、文本绿 `#45B45A`）。切换即时生效；登录后写入 `users.theme_preference`（Flyway `V5__user_theme.sql`），未登录使用 `localStorage` 的 `resume-do:theme` 兜底，登录后以服务端值为准。首屏内联脚本在 React 启动前应用主题，避免闪白。应用外壳、弹窗、空状态与提示条共用一套 token；A4 预览、模板缩略图、原件画布与导出的 PDF 始终为白色纸张，深色下通过描边与阴影区分纸张边界。登录页按同一封面排版：左上品牌块、右上三态开关、卡片头、`本地优先 · 简历数据不出你的设备` 胶囊与分段 Tab，窄屏下自动收紧。接口为 `GET /api/auth/me` 返回 `themePreference`，`PATCH /api/auth/me` 接受 `{ "themePreference": "light" | "dark" | "system" }`，非法值返回 400，详见[主题偏好接口](docs/api/auth-me.md)与[暗黑主题验证记录](docs/ops/2026-10-30-dark-theme-verification.md)。
 
 原件存于服务器 `data/resumes/<publicId>.pdf` 或 `.docx`，数据库保存路径、文件名、字节数、SHA-256 与 PDF 页数，保留至删除简历。临时上传/无引用孤立文件由本模块清理，不清理有效原件。
 
@@ -393,7 +393,7 @@ npm run build
 npm run test:e2e
 ```
 
-该测试直接加载生产构建，通过 Playwright 拦截请求提供内存 API，不启动 HTTP 监听、不连接真实数据库。覆盖 A01 保存后重载、A05 模板与字号取消／应用、A06 的 1／3／5 页预览与块边界／超长单段溢出提示、导入覆盖与释放，以及主题默认深色、三态切换、服务端持久化、跟随系统与纸张保持白色；不代表真实 API、数据库与 PDF 下载全链路通过。测试默认使用 Chrome；若使用已安装的 Playwright Chromium，Bash/Zsh 设置 `RESUME_DO_BROWSER_CHANNEL=chromium`，PowerShell 设置 `$env:RESUME_DO_BROWSER_CHANNEL = 'chromium'` 后运行。2026-10-30 在本机 Chrome 下 5 个用例全部通过。
+该测试直接加载生产构建，通过 Playwright 拦截请求提供内存 API，不启动 HTTP 监听、不连接真实数据库。覆盖 A01 保存后重载、A05 模板与字号取消／应用、A06 的 1／3／5 页预览与块边界／超长单段溢出提示、导入覆盖与释放，以及主题默认深色、三态切换、服务端持久化、跟随系统、纸张保持白色与登录页封面 V2 的品牌块和隐私胶囊；不代表真实 API、数据库与 PDF 下载全链路通过。测试默认使用 Chrome；若使用已安装的 Playwright Chromium，Bash/Zsh 设置 `RESUME_DO_BROWSER_CHANNEL=chromium`，PowerShell 设置 `$env:RESUME_DO_BROWSER_CHANNEL = 'chromium'` 后运行。2026-10-30 在本机 Chrome 下 5 个用例全部通过。
 
 Java 测试与打包：
 

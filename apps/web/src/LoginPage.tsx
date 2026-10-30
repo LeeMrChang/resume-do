@@ -36,85 +36,95 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (user:
 
   return (
     <div className="login-shell">
-      <ThemeToggle className="login-theme" />
-      <div className="login-card">
-        <div className="logo login-logo">
-          <span>简</span>Resume Do · 简历工作台
+      <div className="login-bar">
+        <div className="login-brand">
+          <span className="brand-mark" aria-hidden="true">简</span>
+          Resume Do
         </div>
-        <p className="login-sub">填写、预览与导出，在一处完成。</p>
+        <ThemeToggle />
+      </div>
+      <div className="login-main">
+        <div className="login-card">
+          <div className="logo login-logo">
+            <span aria-hidden="true">简</span>Resume Do · 简历工作台
+          </div>
+          <p className="login-pill">
+            <span>本地优先 · 简历数据不出你的设备</span>
+          </p>
 
-        <div className="segmented" role="tablist" aria-label="登录或注册">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'login'}
-            className={mode === 'login' ? 'active' : ''}
-            onClick={() => switchMode('login')}
-          >
-            登录
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'register'}
-            className={mode === 'register' ? 'active' : ''}
-            onClick={() => switchMode('register')}
-          >
-            注册
-          </button>
-        </div>
+          <div className="segmented" role="tablist" aria-label="登录或注册">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'login'}
+              className={mode === 'login' ? 'active' : ''}
+              onClick={() => switchMode('login')}
+            >
+              登录
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'register'}
+              className={mode === 'register' ? 'active' : ''}
+              onClick={() => switchMode('register')}
+            >
+              注册
+            </button>
+          </div>
 
-        <form onSubmit={submit}>
-          {mode === 'register' && (
+          <form onSubmit={submit}>
+            {mode === 'register' && (
+              <label>
+                称呼
+                <input
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  maxLength={100}
+                  autoComplete="nickname"
+                  placeholder="用于界面上称呼你"
+                />
+              </label>
+            )}
             <label>
-              称呼
+              邮箱
               <input
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                maxLength={100}
-                autoComplete="nickname"
-                placeholder="用于界面上称呼你"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                maxLength={190}
+                required
+                autoComplete="email"
+                placeholder="you@example.com"
               />
             </label>
-          )}
-          <label>
-            邮箱
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              maxLength={190}
-              required
-              autoComplete="email"
-              placeholder="you@example.com"
-            />
-          </label>
-          <label>
-            密码
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              minLength={mode === 'register' ? 8 : undefined}
-              maxLength={72}
-              required
-              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-              placeholder={mode === 'register' ? '至少 8 位' : '输入密码'}
-            />
-          </label>
+            <label>
+              密码
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                minLength={mode === 'register' ? 8 : undefined}
+                maxLength={72}
+                required
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                placeholder={mode === 'register' ? '至少 8 位' : '输入密码'}
+              />
+            </label>
 
-          {error && <div className="error" role="alert">{error}</div>}
+            {error && <div className="error" role="alert">{error}</div>}
 
-          <button type="submit" className="primary login-submit" disabled={busy}>
-            {busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并登录'}
-          </button>
-        </form>
+            <button type="submit" className="primary login-submit" disabled={busy}>
+              {busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并登录'}
+            </button>
+          </form>
 
-        <p className="login-note">
-          简历只保存在你部署的数据库中，不会发送到第三方服务。
-          <br />
-          本地开发环境首次使用请先注册。
-        </p>
+          <p className="login-note">
+            简历只保存在你部署的数据库中，不会发送到第三方服务。
+            <br />
+            本地开发环境首次使用请先注册。
+          </p>
+        </div>
       </div>
     </div>
   );
