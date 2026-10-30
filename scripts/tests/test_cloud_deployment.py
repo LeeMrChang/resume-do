@@ -12,6 +12,23 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class CloudDeploymentTests(unittest.TestCase):
+    def test_source_bundle_is_small_and_excludes_private_files(self):
+        import tarfile
+        with tempfile.TemporaryDirectory() as scratch:
+            base = Path(scratch)
+            for name in ['package.json', 'apps/api/pom.xml', 'apps/api/src/main/App.java',
+                         'apps/web/src/App.tsx', 'apps/api/.resume-do-local.yml',
+                         '.env', 'data/private.pdf', 'apps/web/node_modules/private.js']:
+                target = base / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text('test')
+            output = base / 'source.tar.gz'
+            self.packager().source_archive(base, output)
+            with tarfile.open(output) as archive:
+                names = set(archive.getnames())
+            self.assertEqual(names, {'package.json', 'apps/api/pom.xml',
+                                   'apps/api/src/main/App.java', 'apps/web/src/App.tsx'})
+
     def test_locked_packages_are_downloadable_without_company_network(self):
         from urllib.parse import urlparse
         packages = json.loads((ROOT / 'package-lock.json').read_text())['packages']
@@ -66,11 +83,11 @@ class CloudDeploymentTests(unittest.TestCase):
         self.assertIn('Invalid release', result.stderr)
 
     def test_cloud_helpers_have_valid_shell_syntax(self):
-        for name in ['deploy-cloud.sh', 'bootstrap-cloud.sh', 'backup-cloud.sh', 'setup-cicd.sh']:
+        for name in ['deploy-cloud.sh', 'bootstrap-cloud.sh', 'backup-cloud.sh', 'setup-cicd.sh', 'build-cloud.sh']:
             result = subprocess.run(['bash', '-n', str(ROOT / 'scripts' / name)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def deployment(self, fail_stage):
+    def deployment(self, fail_stage, source_mode=False):
         """Run the real release state machine against isolated executable substitutes."""
         import textwrap
         scratch = tempfile.TemporaryDirectory()
@@ -113,13 +130,34 @@ class CloudDeploymentTests(unittest.TestCase):
         images = base / 'images.tar.gz'
         images.write_bytes(gzip.compress(b'fake-image-load-stream'))
         release = 'a' * 40 + '-1-1'
-        self.packager().package(ROOT, images, release, root / 'incoming' / (release + '.tar'))
+        module = self.packager()
+        if source_mode:
+            payload_root = base / 'payload'
+            for name in module.PAYLOAD:
+                target = payload_root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / name).read_bytes())
+            (payload_root / 'scripts/build-cloud.sh').write_text(
+                '#!/bin/bash\necho "Simulated build failure" >&2\nexit 1\n')
+            source = base / 'source.tar.gz'
+            source.write_bytes(gzip.compress(b'fake-source'))
+            module.package(payload_root, None, release, root / 'incoming' / (release + '.tar'), source=source)
+        else:
+            module.package(ROOT, images, release, root / 'incoming' / (release + '.tar'))
         env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
                'FAKE_LOG': str(base / 'commands.jsonl'), 'FAIL_STAGE': fail_stage}
         result = subprocess.run(['bash', str(ROOT / 'scripts/deploy-cloud.sh'), release, str(root)],
                                 capture_output=True, text=True, env=env)
-        commands = [json.loads(line) for line in (base / 'commands.jsonl').read_text().splitlines()]
+        log = base / 'commands.jsonl'
+        commands = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
         return result, commands, root
+
+    def test_source_build_failure_does_not_stop_services_or_touch_database(self):
+        result, commands, root = self.deployment('none', source_mode=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Simulated build failure', result.stderr)
+        self.assertFalse(any('stop' in c or 'up' in c or 'exec' in c for c in commands))
+        self.assertFalse((root / 'current').exists())
 
     def test_backup_failure_restarts_old_application_and_does_not_migrate(self):
         result, commands, _ = self.deployment('backup')

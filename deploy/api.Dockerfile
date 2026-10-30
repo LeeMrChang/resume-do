@@ -1,11 +1,14 @@
-FROM maven:3.9-eclipse-temurin-21 AS build
+ARG MAVEN_IMAGE=maven:3.9-eclipse-temurin-21
+ARG JAVA_IMAGE=eclipse-temurin:21-jre
+FROM ${MAVEN_IMAGE} AS build
+ENV MAVEN_OPTS="-Xmx384m -XX:MaxMetaspaceSize=192m"
 WORKDIR /build
 COPY apps/api/pom.xml ./pom.xml
 RUN mvn -q -B dependency:go-offline
 COPY apps/api/src ./src
 RUN mvn -q -B -DskipTests package
 
-FROM eclipse-temurin:21-jre
+FROM ${JAVA_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

@@ -12,7 +12,7 @@
 | MySQL | 项目私网 3306，不发布公网端口 |
 | 数据卷 | resume_do_cloud_mysql_data / resume_do_cloud_files |
 | 配置 | `/home/ubuntu/resume-do/deploy/.env`，600 权限，仅服务器保存 |
-| 发布 | GitHub 构建 linux/amd64 镜像；SSH 上传、校验、备份、启动、健康检查 |
+| 发布 | GitHub 构建与验证镜像；SSH 上传约 1.8 MiB 源码包，服务器串行重建、备份、启动、健康检查 |
 | AI | 初次关闭；不会把开发机 API Key 或本机简历上传到服务器 |
 
 前置条件：Docker Engine 和支持 `--wait`、多个 `--env-file` 的 Compose；Ubuntu x86_64；部署用户可运行 Docker（或 `sudo -n docker`），有 Python3、flock、curl、gzip、tar。首次初始化要求至少 1536 MiB **可用**内存和 8 GiB 空闲磁盘，这是最低预检，不是性能保证。默认容器内存上限分别为数据库 768m、API 768m、worker 1g、Web 128m；没有预留这些内存，实际容量仍须结合 cost 峰值和 PDF 并发评估。
@@ -51,7 +51,9 @@ gh run list --repo LeeMrChang/resume-do --workflow ci-cd.yml --limit 5
 
 检查包括：部署安全测试、TS 类型、npm 单测、Web 构建、Java verify、Chromium 浏览器/PDF 回归、隔离 MySQL 下的 Flyway/API/worker 真链路。镜像构建完还在 GitHub 临时容器中再次验收实际镜像，再上传服务器。所有 CI 数据都在临时 runner 内，生产 Secrets 不用于 PR。
 
-发布归档仅包含云端 Compose、备份脚本、镜像与校验清单，不包含 `.env`、本机密钥、参考图库、真实简历或源码目录。Docker 构建上下文也排除私密配置。
+发布归档仅包含云端 Compose、备份/构建脚本、源码白名单压缩包与 SHA-256 清单。不包含 `.env`、本机密钥、参考图库、真实简历、node_modules 或构建缓存。Docker 构建上下文也排除私密配置。
+
+完整镜像跨境上传实测只有几十 KB/s，默认改为小体积源码包。服务器在暂停应用之前顺序构建三个镜像；单次构建限制为 1 CPU/1 GiB，Maven/Node 堆限制 384 MiB。需要支持经典 builder 资源限制的 Docker（`DOCKER_BUILDKIT=0`），以及腾讯云基础镜像、Maven Central、npm 和 Playwright 下载可达。构建失败保留现场，不停止已有服务；这些限制减少资源竞争，不能保证对 cost 完全没有性能影响。服务器镜像是同一份源码重新构建，仍须独立云端验收。
 
 ## 4. 发布与恢复原则
 
@@ -64,8 +66,10 @@ gh run list --repo LeeMrChang/resume-do --workflow ci-cd.yml --limit 5
   releases/<SHA-run-attempt>/
     deploy/compose.cloud.yaml
     scripts/backup-cloud.sh
+    scripts/build-cloud.sh
     image.env
-    images.tar.gz
+    source.tar.gz
+    source/                 # 校验后解压的构建上下文
     release.json
     SUCCESS                 # 仅成功发布才出现
   current -> releases/<成功版本>
@@ -73,7 +77,7 @@ gh run list --repo LeeMrChang/resume-do --workflow ci-cd.yml --limit 5
   deploy.lock
 ```
 
-1. 校验归档白名单、普通文件、大小、重复项、release ID 和 SHA-256；加载已构建镜像。
+1. 校验归档白名单、普通文件、大小、重复项、release ID 和 SHA-256；安全解压源码并构建镜像。旧的完整镜像归档仍可加载。
 2. 独立 MySQL 首次创建；已有容器只启动，不随代码发布升级数据库镜像/初始化密码。不明已有数据卷会拒绝接管。
 3. 先校验数据库 TCP/root 访问，再暂停本项目 Web/API/worker；更新前备份数据库和完整文件卷。
 4. 启动新 API（Flyway 可能执行 DDL），随后启动 worker/Web；容器健康与 HTTP 健康均通过后切换 current。
@@ -134,3 +138,5 @@ bash current/scripts/backup-cloud.sh /home/ubuntu/resume-do
 本环境没有 Docker，不能本地验证 Compose 展开、镜像构建和 Linux 容器运行；由首轮 GitHub CI/CD 执行。浏览器 E2E、真实 PDF 与云端部署结果需以本次流水线和服务器验收为准。当前终端 SSH 被环境禁止，不能把本地准备完成等同于服务器已部署。
 
 用户已反馈接入成功；首轮发布、数据库持久化、原件和编辑版下载的云端结果尚待记录。未修改 cost 的备份故障，原有 unhealthy/restarting 问题仍需单独排查。
+
+传输修正验证：公共 npm 源修复后的 GitHub 第 2 轮检查、浏览器/PDF、API/Flyway/排队下载以及实际发布容器冒烟均通过。完整镜像上传过慢，尚未完成云端发布。新增源码白名单和构建失败保护后本地部署测试 11 项通过；发布包 1,884,160 字节（约 1.8 MiB）。服务器源码构建尚待实际执行，不将脚本测试视为 Docker 构建通过。

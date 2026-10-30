@@ -15,10 +15,13 @@ python3 - "$root/incoming/$release_id.tar" "$release" "$release_id" <<'PY'
 import hashlib, json, pathlib, shutil, sys, tarfile
 source, target, release_id = sys.argv[1:]
 allowed = {'deploy/compose.cloud.yaml', 'scripts/backup-cloud.sh', 'images.tar.gz', 'release.json'}
+source_allowed = (allowed - {'images.tar.gz'}) | {'source.tar.gz', 'scripts/build-cloud.sh'}
 with tarfile.open(source, 'r:') as archive:
     members = archive.getmembers()
     names = [member.name for member in members]
-    if set(names) != allowed or len(names) != len(allowed): raise SystemExit('Unexpected deployment archive files')
+    if set(names) not in (allowed, source_allowed) or len(names) != len(set(names)):
+        raise SystemExit('Unexpected deployment archive files')
+    allowed = set(names)
     if any(not member.isfile() or member.size > 4 * 1024**3 or member.size < 0 for member in members):
         raise SystemExit('Unsafe deployment archive')
     if archive.getmember('release.json').size > 65536: raise SystemExit('Manifest too large')
@@ -47,7 +50,11 @@ compose() {
 }
 printf 'RESUME_DO_IMAGE_TAG=%s\n' "$RESUME_DO_IMAGE_TAG" > "$release/image.env"
 compose config --quiet
-gzip -dc "$release/images.tar.gz" | "${DOCKER[@]}" load >/dev/null
+if [[ -f "$release/source.tar.gz" ]]; then
+  bash "$release/scripts/build-cloud.sh" "$release" "$RESUME_DO_IMAGE_TAG"
+else
+  gzip -dc "$release/images.tar.gz" | "${DOCKER[@]}" load >/dev/null
+fi
 for image in resume-api resume-worker resume-web; do "${DOCKER[@]}" image inspect "$image:$RESUME_DO_IMAGE_TAG" >/dev/null; done
 
 db=$(compose ps -aq resume-db)

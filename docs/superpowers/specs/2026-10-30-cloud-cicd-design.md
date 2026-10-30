@@ -4,7 +4,8 @@
 
 - Compose 项目 `resume-do-cloud`，专属 MySQL、文件卷，不操作 cost 的容器、数据卷及 80/443/8080。
 - 仅 Web 发布 `127.0.0.1:8081:80`，API/数据库只在项目网络内通信。
-- GitHub Actions 检查 Java、TypeScript、构建、浏览器与部署脚本后，在 runner 构建 linux/amd64 三个镜像，打包上传；服务器不承担编译负载。
+- GitHub Actions 检查 Java、TypeScript、构建、浏览器与部署脚本后，在 runner 构建并验证三个镜像；随后只上传约 1.8 MiB 的源码白名单包，在服务器串行重建镜像。实测跨境 SSH 上传完整镜像仅几十 KB/s，因此调整传输策略。
+- 服务器构建发生在停止服务之前，要求至少 1536 MiB 可用内存和 8 GiB 磁盘；经典 Docker builder 单次限制 1 CPU/1 GiB，Maven/Node 堆限制 384 MiB。依赖腾讯云基础镜像、Maven/npm/Playwright 下载可达；失败不切换、不停已有应用。服务器重建产物须重新通过健康检查，不能把 runner 验证等同于云端验收。
 - push main 自动部署，PR 只检查；发布串行，已过时 main 提交跳过。首次须在正常终端安装独立 SSH 公钥并配置仓库 Secrets。
 - 生产 `.env` 仅留在服务器，随机生成独立数据库密码；AI 初次默认关闭，不自动复制开发机密钥。
 - 不可变 release 目录、独立 image tag、校验归档和 SHA-256、发布锁。更新前停止本项目写入进程，备份数据库和文件卷；备份失败不进入迁移。

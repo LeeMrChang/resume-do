@@ -146,13 +146,12 @@ jobs:
             exit 1
           fi
           python3 scripts/smoke-cloud.py --base http://127.0.0.1:8081
-      - name: Package validated images
+      - name: Package source for server build after release container verification
         if: steps.current.outputs.deploy == 'true'
         run: |
           set -euo pipefail
           release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          docker save "resume-api:ci-$release" "resume-worker:ci-$release" "resume-web:ci-$release" | gzip -1 > "$RUNNER_TEMP/resume-images.tar.gz"
-          python3 scripts/package-release.py --images "$RUNNER_TEMP/resume-images.tar.gz" \
+          python3 scripts/package-release.py --source \
             --release "$release" --output "$RUNNER_TEMP/resume-release.tar"
       - name: Upload and deploy over verified SSH
         if: steps.current.outputs.deploy == 'true'
@@ -182,8 +181,10 @@ jobs:
             -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
           release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          scp "${options[@]}" -P "$DEPLOY_PORT" "$RUNNER_TEMP/resume-release.tar" \
+          echo "Uploading source release ($(stat -c %s "$RUNNER_TEMP/resume-release.tar") bytes)"
+          scp -v "${options[@]}" -P "$DEPLOY_PORT" "$RUNNER_TEMP/resume-release.tar" \
             "$remote:/home/ubuntu/resume-do/incoming/$release.tar"
+          echo 'Source upload complete; building and deploying on server.'
           ssh "${options[@]}" -p "$DEPLOY_PORT" "$remote" \
             "bash -s -- '$release' /home/ubuntu/resume-do" < scripts/deploy-cloud.sh
           echo "Deployed $GITHUB_SHA. SSH tunnel endpoint: http://localhost:8081" >> "$GITHUB_STEP_SUMMARY"
