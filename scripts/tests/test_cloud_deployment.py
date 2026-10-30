@@ -101,7 +101,7 @@ class CloudDeploymentTests(unittest.TestCase):
             result = subprocess.run(['bash', '-n', str(ROOT / 'scripts' / name)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def deployment(self, fail_stage, source_mode=False):
+    def deployment(self, fail_stage, source_mode=False, registry_mode=False):
         """Run the real release state machine against isolated executable substitutes."""
         import textwrap
         scratch = tempfile.TemporaryDirectory()
@@ -118,8 +118,11 @@ class CloudDeploymentTests(unittest.TestCase):
             #!/usr/bin/env python3
             import io,json,os,pathlib,sys,tarfile
             args=sys.argv[1:]
+            if args[:1]==['--config']: args=args[2:]
             with open(os.environ['FAKE_LOG'],'a') as log: log.write(json.dumps(args)+'\\n')
             if args[0]=='load': sys.stdin.buffer.read()
+            if args[0]=='login': sys.stdin.read()
+            if args[0]=='pull' and os.environ['FAIL_STAGE']=='pull': sys.exit(1)
             if args[0]=='compose':
                 command=args[args.index('-f')+2:]
                 if command[0]=='ps':
@@ -145,7 +148,11 @@ class CloudDeploymentTests(unittest.TestCase):
         images.write_bytes(gzip.compress(b'fake-image-load-stream'))
         release = 'a' * 40 + '-1-1'
         module = self.packager()
-        if source_mode:
+        if registry_mode:
+            refs = base / 'images.json'
+            refs.write_text(json.dumps({s: 'ccr.ccs.tencentyun.com/test/resume-' + s + '@sha256:' + 'a' * 64 for s in ('api', 'worker', 'web')}))
+            module.package(ROOT, None, release, root / 'incoming' / (release + '.tar'), registry_refs=refs)
+        elif source_mode:
             payload_root = base / 'payload'
             for name in module.PAYLOAD:
                 target = payload_root / name
@@ -159,12 +166,39 @@ class CloudDeploymentTests(unittest.TestCase):
         else:
             module.package(ROOT, images, release, root / 'incoming' / (release + '.tar'))
         env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
-               'FAKE_LOG': str(base / 'commands.jsonl'), 'FAIL_STAGE': fail_stage}
+               'FAKE_LOG': str(base / 'commands.jsonl'), 'FAIL_STAGE': fail_stage,
+               'RESUME_DO_REGISTRY_PASSWORD': 'test-only-password'}
         result = subprocess.run(['bash', str(ROOT / 'scripts/deploy-cloud.sh'), release, str(root)],
                                 capture_output=True, text=True, env=env)
         log = base / 'commands.jsonl'
         commands = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
         return result, commands, root
+
+    def test_registry_pull_failure_does_not_stop_application_and_removes_credentials(self):
+        result, commands, root = self.deployment('pull', registry_mode=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(any(c[0] == 'pull' for c in commands))
+        self.assertFalse(any('stop' in c or 'up' in c for c in commands))
+        self.assertFalse(list(root.glob('registry-auth.*')))
+
+    def test_registry_release_pulls_digests_and_deploys_after_health(self):
+        result, commands, root = self.deployment('none', registry_mode=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pulls = [c[1] for c in commands if c[0] == 'pull']
+        self.assertEqual(len(pulls), 3)
+        self.assertTrue(all('@sha256:' in c for c in pulls))
+        self.assertTrue((root / 'current/SUCCESS').exists())
+        self.assertFalse(list(root.glob('registry-auth.*')))
+
+    def test_registry_refs_reject_mutable_tags_and_other_hosts(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            path = Path(scratch) / 'images.json'
+            for ref in ['ccr.ccs.tencentyun.com/test/resume-api:latest',
+                        'example.com/test/resume-api@sha256:' + 'a' * 64]:
+                refs = {s: 'ccr.ccs.tencentyun.com/test/resume-' + s + '@sha256:' + 'a' * 64 for s in ('api', 'worker', 'web')}
+                refs['api'] = ref
+                path.write_text(json.dumps(refs))
+                with self.assertRaises(ValueError): self.packager().validate_image_refs(path)
 
     def test_source_build_failure_does_not_stop_services_or_touch_database(self):
         result, commands, root = self.deployment('none', source_mode=True)
