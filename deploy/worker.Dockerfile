@@ -16,6 +16,7 @@ RUN npx playwright install --with-deps chromium
 
 COPY packages packages
 COPY apps/pdf-worker apps/pdf-worker
+COPY deploy/worker-health.mjs apps/pdf-worker/health.mjs
 
 ENV NODE_ENV=production \
     RESUME_DO_STORAGE_DIR=/data

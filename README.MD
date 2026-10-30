@@ -345,6 +345,8 @@ IDEA 的 Java 运行配置不会自动继承另一个终端执行 `source .env` 
 
 ## 9. 可选：Docker Compose 运行
 
+与 cost 共用云服务器时使用独立的 [云端部署与 GitHub CI/CD 流程](docs/ops/2026-10-30-cloud-cicd.md)：`deploy/compose.cloud.yaml` 仅发布 `127.0.0.1:8081`，使用独立数据库和文件卷，通过 SSH 隧道访问。下面的通用 Compose 示例仍用于独立环境，不要在 cost 所在服务器直接使用默认 8080。
+
 仓库包含容器配置，但此前本机验证未覆盖 Docker 镜像构建与运行。首次使用仍需在自己的 Docker 环境验收，尤其是 Chromium 和中文字体。
 
 在项目根目录执行：

@@ -1,0 +1,109 @@
+name: resume-do-cloud
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  resume-db:
+    image: ${RESUME_DO_MYSQL_IMAGE:-mirror.ccs.tencentyun.com/library/mysql:8.4}
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${RESUME_DO_MYSQL_ROOT_PASSWORD:?required}
+      MYSQL_DATABASE: resume_do
+      MYSQL_USER: resume_do
+      MYSQL_PASSWORD: ${RESUME_DO_DB_PASSWORD:?required}
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_0900_ai_ci']
+    volumes:
+      - resume_do_cloud_mysql_data:/var/lib/mysql
+    mem_limit: ${RESUME_DO_MYSQL_MEMORY:-768m}
+    healthcheck:
+      test: ['CMD-SHELL', 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql --protocol=tcp -h127.0.0.1 -uresume_do -Dresume_do --batch --skip-column-names -e "SELECT 1" >/dev/null']
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 30
+    logging: *logging
+
+  resume-api:
+    image: resume-api:${RESUME_DO_IMAGE_TAG:?release image tag required}
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_SERVLET_SESSION_COOKIE_NAME: RESUME_DO_SESSION
+      RESUME_DO_DB_HOST: resume-db
+      RESUME_DO_DB_NAME: resume_do
+      RESUME_DO_DB_USER: resume_do
+      RESUME_DO_DB_PASSWORD: ${RESUME_DO_DB_PASSWORD:?required}
+      RESUME_DO_STORAGE_DIR: /data
+      RESUME_DO_API_PORT: 8080
+      JAVA_TOOL_OPTIONS: '-XX:MaxRAMPercentage=65'
+      RESUME_DO_AI_ENABLED: ${RESUME_DO_AI_ENABLED:-false}
+      RESUME_DO_AI_API_KEY: ${RESUME_DO_AI_API_KEY:-}
+      RESUME_DO_AI_MODEL: ${RESUME_DO_AI_MODEL:-deepseek-flash}
+      RESUME_DO_AI_TIMEOUT_MS: ${RESUME_DO_AI_TIMEOUT_MS:-30000}
+      RESUME_DO_AI_DAILY_LIMIT: ${RESUME_DO_AI_DAILY_LIMIT:-20}
+      RESUME_DO_AI_PER_MINUTE_LIMIT: ${RESUME_DO_AI_PER_MINUTE_LIMIT:-5}
+    volumes:
+      - resume_do_cloud_files:/data
+    expose: ['8080']
+    mem_limit: ${RESUME_DO_API_MEMORY:-768m}
+    depends_on:
+      resume-db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', '--silent', '--max-time', '5', 'http://127.0.0.1:8080/api/health']
+      interval: 10s
+      timeout: 6s
+      start_period: 60s
+      retries: 18
+    logging: *logging
+
+  resume-worker:
+    image: resume-worker:${RESUME_DO_IMAGE_TAG:?release image tag required}
+    restart: unless-stopped
+    environment:
+      RESUME_DO_DB_HOST: resume-db
+      RESUME_DO_DB_NAME: resume_do
+      RESUME_DO_DB_USER: resume_do
+      RESUME_DO_DB_PASSWORD: ${RESUME_DO_DB_PASSWORD:?required}
+      RESUME_DO_STORAGE_DIR: /data
+      RESUME_DO_DOWNLOAD_TTL_MINUTES: 10
+    volumes:
+      - resume_do_cloud_files:/data
+    shm_size: 256mb
+    mem_limit: ${RESUME_DO_WORKER_MEMORY:-1g}
+    depends_on:
+      resume-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '/repo/apps/pdf-worker/health.mjs']
+      interval: 20s
+      timeout: 8s
+      start_period: 30s
+      retries: 5
+    logging: *logging
+
+  resume-web:
+    image: resume-web:${RESUME_DO_IMAGE_TAG:?release image tag required}
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8081:80'
+    mem_limit: ${RESUME_DO_WEB_MEMORY:-128m}
+    depends_on:
+      resume-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/api/health']
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    logging: *logging
+
+volumes:
+  resume_do_cloud_mysql_data:
+    name: resume_do_cloud_mysql_data
+  resume_do_cloud_files:
+    name: resume_do_cloud_files

@@ -7,3 +7,12 @@ data
 .gitignore
 *.log
 .DS_Store
+.env
+.env.*
+**/.env
+**/.env.*
+**/.resume-do-local.yml
+.idea
+.run
+.vscode
+docs
