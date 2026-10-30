@@ -151,7 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          python3 scripts/package-release.py --source \
+          docker save "resume-api:ci-$release" "resume-worker:ci-$release" "resume-web:ci-$release" | gzip -1 > "$RUNNER_TEMP/resume-images.tar.gz"; python3 scripts/package-release.py --images "$RUNNER_TEMP/resume-images.tar.gz" \
             --release "$release" --output "$RUNNER_TEMP/resume-release.tar"
       - name: Upload and deploy over verified SSH
         if: steps.current.outputs.deploy == 'true'
