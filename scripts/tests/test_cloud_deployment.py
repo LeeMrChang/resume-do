@@ -12,6 +12,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class CloudDeploymentTests(unittest.TestCase):
+    def test_locked_packages_are_downloadable_without_company_network(self):
+        from urllib.parse import urlparse
+        packages = json.loads((ROOT / 'package-lock.json').read_text())['packages']
+        for name, package in packages.items():
+            resolved = package.get('resolved', '')
+            if resolved.startswith(('https://', 'http://')):
+                self.assertEqual(urlparse(resolved).netloc, 'registry.npmjs.org', name)
+
     def packager(self):
         spec = importlib.util.spec_from_file_location('package_release', ROOT / 'scripts/package-release.py')
         module = importlib.util.module_from_spec(spec)
