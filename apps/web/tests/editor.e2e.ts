@@ -74,6 +74,26 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     assert.ok((await editor.innerText()).startsWith('第一行'));
     assert.equal(record.document.basic.name, '段落回归');
     assert.equal(record.document.intent.role, '技术文档工程师');
+    const waitForBasic = async (check: () => boolean) => {
+      for (let attempt = 0; attempt < 120 && !check(); attempt += 1) await new Promise(resolve => setTimeout(resolve, 50));
+      assert.ok(check(), 'basic info change must be saved');
+    };
+    await page.getByRole('tab', { name: '基本信息', exact: true }).click();
+    const ageInput = page.getByLabel('年龄', { exact: true });
+    assert.equal(await ageInput.isEditable(), true);
+    await ageInput.fill('31岁');
+    await waitForBasic(() => record.document.basic.age === '31岁');
+    await page.waitForFunction(() => document.querySelector('.pages')?.textContent?.includes('31岁') ?? false);
+    await ageInput.fill('');
+    await waitForBasic(() => record.document.basic.age === '');
+    await page.waitForFunction(() => !(document.querySelector('.pages')?.textContent?.includes('年龄') ?? true));
+    assert.doesNotMatch(await page.locator('.pages').innerText(), /年龄/);
+    await page.getByLabel('出生年月', { exact: true }).fill('1995-03');
+    await waitForBasic(() => record.document.basic.birthMonth === '1995-03');
+    const computedAge = page.getByLabel('年龄（自动计算）', { exact: true });
+    assert.equal(await computedAge.isEditable(), false);
+    assert.match(await computedAge.inputValue(), /^\d{1,3}岁$/);
+    assert.ok((await page.locator('.pages').innerText()).includes(await computedAge.inputValue()));
     const before = structuredClone(record);
     await page.getByRole('button', { name: /更换模板/ }).click();
     await page.getByRole('button', { name: /^1015 / }).click();

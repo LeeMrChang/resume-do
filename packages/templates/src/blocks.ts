@@ -63,12 +63,12 @@ function headerBlock(input: RenderInput): ResumeBlock {
       { icon: 'phone', label: '电话', value: basic.phone },
       { icon: 'email', label: '邮箱', value: basic.email },
       { icon: 'city', label: '城市', value: basic.city },
-      { label: '出生年月', value: basic.birthMonth },
-      { label: '民族', value: basic.ethnicity },
-      { label: '婚姻状况', value: basic.maritalStatus },
-      { label: '政治面貌', value: basic.politicalStatus },
-      { label: '身高', value: basic.height },
-      { label: '体重', value: basic.weight },
+      { icon: 'birthMonth', label: '出生年月', value: basic.birthMonth },
+      { icon: 'ethnicity', label: '民族', value: basic.ethnicity },
+      { icon: 'maritalStatus', label: '婚姻状况', value: basic.maritalStatus },
+      { icon: 'politicalStatus', label: '政治面貌', value: basic.politicalStatus },
+      { icon: 'height', label: '身高', value: basic.height },
+      { icon: 'weight', label: '体重', value: basic.weight },
       ...(basic.customFields ?? []),
     ] as { icon?: ContactIcon; label: string; value?: string }[]).filter(
       (row): row is { icon?: ContactIcon; label: string; value: string } => Boolean(row.value),
@@ -100,13 +100,20 @@ function headerBlock(input: RenderInput): ResumeBlock {
     };
   }
 
-  const extras: [string, string | undefined][] = [
-    ['出生年月', basic.birthMonth], ['年龄', basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age],
-    ['籍贯', basic.nativePlace], ['民族', basic.ethnicity], ['婚姻状况', basic.maritalStatus],
-    ['政治面貌', basic.politicalStatus], ['身高', basic.height], ['体重', basic.weight],
-    ...(basic.customFields ?? []).map(pair => [pair.label, pair.value] as [string, string]),
+  const extras: { icon?: ContactIcon; label: string; value?: string }[] = [
+    { icon: 'birthMonth', label: '出生年月', value: basic.birthMonth },
+    { icon: 'age', label: '年龄', value: basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age },
+    { icon: 'nativePlace', label: '籍贯', value: basic.nativePlace },
+    { icon: 'ethnicity', label: '民族', value: basic.ethnicity },
+    { icon: 'maritalStatus', label: '婚姻状况', value: basic.maritalStatus },
+    { icon: 'politicalStatus', label: '政治面貌', value: basic.politicalStatus },
+    { icon: 'height', label: '身高', value: basic.height },
+    { icon: 'weight', label: '体重', value: basic.weight },
+    ...(basic.customFields ?? []).map(pair => ({ label: pair.label, value: pair.value })),
   ];
-  const extraLine = extras.filter(([,value]) => value).map(([label,value]) => `<span class="r-contact">${escapeHtml(label)}：${escapeHtml(value ?? '')}</span>`).join('');
+  const extraLine = extras.filter(({ value }) => value).map(({ icon, label, value }) =>
+    `<span class="r-contact">${icon ? contactIcon(icon) : ''}<em>${escapeHtml(label)}</em><span>${escapeHtml(value ?? '')}</span></span>`,
+  ).join('');
   const html = [
     '<div class="r-intro">',
     showPhoto ? `<div class="r-intro-photo">${photo}</div>` : '',
@@ -126,7 +133,7 @@ function headerBlock(input: RenderInput): ResumeBlock {
     kind: 'header',
     keepWithNext: false,
     html,
-    plainText: [name, intentLine, ...metaItems.map(item => item.value), ...extras.map(([, value]) => value)].filter(Boolean).join(' '),
+    plainText: [name, intentLine, ...metaItems.map(item => item.value), ...extras.map(({ value }) => value)].filter(Boolean).join(' '),
   };
 }
 

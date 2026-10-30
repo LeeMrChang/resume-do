@@ -58,6 +58,8 @@ export const RESUME_CSS = `
 }
 .r-intro .r-meta span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .r-intro .r-meta .r-contact { display: inline-flex; align-items: baseline; gap: 5px; }
+.r-intro .r-meta .r-contact em { font-style: normal; }
+.r-intro .r-meta .r-contact em::after { content: '：'; }
 .r-contact-icon { width: 1em; height: 1em; flex: none; align-self: baseline; position: relative; top: 0.12em; color: var(--r-accent); }
 .hdr-band .r-contact-icon { color: inherit; }
 .r-intro h1, .r-intent, .r-record-title, .r-role, .r-section-title { overflow-wrap: anywhere; }

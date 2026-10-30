@@ -25,9 +25,22 @@ test('contact icons use vector paths, omit empty fields and keep text free of fo
   const document = structuredClone(SAMPLE_DOCUMENT);
   document.basic.phone = '13800000000';
   document.basic.email = '';
+  document.basic.birthMonth = '1995-03';
+  document.basic.nativePlace = '广东揭阳';
+  document.basic.ethnicity = '汉族';
+  document.basic.maritalStatus = '未婚';
+  document.basic.politicalStatus = '群众';
+  document.basic.height = '175cm';
+  document.basic.weight = '70kg';
+  document.basic.customFields = [{ label: '驾照', value: 'C1' }];
   const header = buildBlocks({ document, appearance: SAMPLE_APPEARANCE })[0];
   assert.match(header.html, /<svg[^>]*data-icon="phone"[^>]*aria-hidden="true"/);
+  for (const icon of ['birthMonth', 'age', 'nativePlace', 'ethnicity', 'maritalStatus', 'politicalStatus', 'height', 'weight']) {
+    assert.ok(header.html.includes(`data-icon="${icon}"`), `header is missing the ${icon} icon`);
+  }
   assert.ok(!header.html.includes('data-icon="email"'));
+  assert.match(header.html, /<em>民族<\/em>/);
+  assert.match(header.html, /<span class="r-contact"><em>驾照<\/em>/);
   assert.ok(header.plainText.includes('13800000000'));
   assert.ok(!header.plainText.includes('<svg'));
   assert.ok(!/[\uE000-\uF8FF\uFFFD]/u.test(header.html));

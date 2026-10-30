@@ -60,13 +60,15 @@ function Field({
   maxLength,
   type = 'text',
   placeholder,
+  readOnly,
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
   maxLength?: number;
   type?: string;
   placeholder?: string;
+  readOnly?: boolean;
 }) {
   return (
     <label>
@@ -76,7 +78,8 @@ function Field({
         value={value}
         maxLength={maxLength}
         placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
+        readOnly={readOnly}
+        onChange={(event) => onChange?.(event.target.value)}
       />
     </label>
   );
@@ -1259,7 +1262,21 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                     }
                   />
                   <Field label="出生年月" type="month" value={doc.basic.birthMonth ?? ''} onChange={value => updateDocument(draft => { draft.basic.birthMonth = value; })} />
-                  <label>年龄（自动计算）<input readOnly value={(doc.basic.birthMonth ? ageFromBirthMonth(doc.basic.birthMonth) : doc.basic.age) || ''} placeholder="填写出生年月后自动计算" /></label>
+                  {doc.basic.birthMonth ? (
+                    <Field label="年龄（自动计算）" value={ageFromBirthMonth(doc.basic.birthMonth)} placeholder="由出生年月自动计算" readOnly />
+                  ) : (
+                    <Field
+                      label="年龄"
+                      value={doc.basic.age ?? ''}
+                      maxLength={30}
+                      placeholder="选填，留空则简历不展示"
+                      onChange={(value) =>
+                        updateDocument((draft) => {
+                          draft.basic.age = value;
+                        })
+                      }
+                    />
+                  )}
                   {([['nativePlace','籍贯'],['ethnicity','民族'],['maritalStatus','婚姻状况'],['politicalStatus','政治面貌'],['height','身高'],['weight','体重']] as const).map(([key,label]) => <Field key={key} label={label} value={doc.basic[key] ?? ''} maxLength={50} onChange={value => updateDocument(draft => { draft.basic[key] = value; })} />)}
                   <div className="wide">
                     {(doc.basic.customFields ?? []).map((pair,index) => <div className="field-grid" key={index}>
@@ -1270,7 +1287,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                     <button disabled={(doc.basic.customFields?.length ?? 0) >= 20} onClick={() => updateDocument(draft => { (draft.basic.customFields ??= []).push({label:'',value:''}); })}>添加自定义信息</button>
                   </div>
                   <p className="note wide">
-                    邮箱填写后会进行格式校验；电话仅限制为 30 个字符，请自行核对号码。姓名为空时导出前会提醒。
+                    邮箱填写后会进行格式校验；电话仅限制为 30 个字符，请自行核对号码。姓名为空时导出前会提醒。年龄可留空，留空后预览与导出不展示；填写出生年月则改为自动计算并锁定。
                   </p>
                 </div>
               )}
