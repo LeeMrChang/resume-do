@@ -200,6 +200,7 @@ echo "$*" >> "$BUILD_LOG"
             commands = log.read_text().splitlines()
             self.assertEqual(len(commands), 3)
             self.assertTrue(all('--memory=1g' in c and '--cpu-quota=100000' in c for c in commands))
+            self.assertTrue(all('--build-arg DEBIAN_MIRROR=mirrors.cloud.tencent.com' in c for c in commands))
 
     def test_backup_failure_restarts_old_application_and_does_not_migrate(self):
         result, commands, _ = self.deployment('backup')

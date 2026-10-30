@@ -10,7 +10,9 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/pdf-worker/package.json apps/pdf-worker/package.json
 RUN NODE_OPTIONS=--max-old-space-size=384 npm ci --workspaces --include-workspace-root
 
-RUN apt-get update \
+ARG DEBIAN_MIRROR=deb.debian.org
+RUN sed -i "s|http://deb.debian.org|http://${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends fonts-noto-cjk fontconfig \
     && rm -rf /var/lib/apt/lists/*
 RUN npx playwright install --with-deps chromium

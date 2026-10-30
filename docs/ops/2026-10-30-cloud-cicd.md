@@ -146,3 +146,5 @@ bash current/scripts/backup-cloud.sh /home/ubuntu/resume-do
 Maven 加速：服务器构建显式传入 `https://mirrors.cloud.tencent.com/nexus/repository/maven-public/`，依赖和构建插件均通过镜像下载，配置只在 API 镜像构建阶段生效；GitHub runner 和普通 Docker 构建默认仍走 Maven Central。配置见 `deploy/maven-settings.xml` 与 `deploy/api.Dockerfile`，源码白名单已包含该 XML。服务器无需修改宿主机 `~/.m2/settings.xml`，不影响 cost。镜像地址依据[腾讯云官方说明](https://cloud.tencent.cn/document/product/649/20231)；是否实际走内网取决于服务器网络与 DNS，不作保证。
 
 取消 Maven 静默输出，后续构建可直接看到阶段信息。预下载依赖仍位于独立 Docker 层，成功构建后 POM、镜像和 settings 未变时可复用该层；本次未迁移 BuildKit 或加入共享宿主机缓存。已开始的构建不会热切换镜像，须由包含新配置的发布触发。验证：13 项部署检查通过；Maven 3.9.16 离线 validate 退出码 0，实际解析出的 mirror URL 确认为腾讯云 HTTPS 地址；未在本机验证国内镜像下载速度。
+
+系统包加速：第 4 轮已完成 API 构建和 worker 的 npm 安装，随后在 Debian 索引下载处长时间停留。云端 worker 构建增加 `DEBIAN_MIRROR=mirrors.cloud.tencent.com`，替换容器中 Debian 主仓库和安全仓库的域名；保持 Bookworm 发行版、组件和 Signed-By 不变，不禁用签名校验，不修改宿主机源。GitHub Runner 默认仍使用 deb.debian.org。后续 Playwright `--with-deps` 会复用容器内已配置的 APT 源；Chromium 文件下载仍由 Playwright 官方源处理，国内网络速度尚待实测。
