@@ -324,6 +324,8 @@ npm run dev:worker
 
 旧校对弹窗与草稿接口保留但不作为默认入口；确认时原件复制到正式简历，确认成功后清理临时文件。默认直入路径不创建 `import_jobs`。
 
+前端联调契约见 [resume-do OpenAPI](docs/api/resume-do-openapi.yaml)（OpenAPI 3.1，覆盖认证、简历、原件、导入、导出与 AI 共 28 个端点，包含 Session 鉴权、错误码、限额与字段结构）。其他前端接手时先读该文件；现有前端调用实现位于 `apps/web/src/api.ts`。
+
 PDF.js worker、本地 cMaps、标准字体与 WASM 随包构建，不使用 CDN。导入覆盖本身不需要新迁移；尚未应用 V3 时先停止 API 与 worker、备份库与数据目录，再启动 API 执行 V3。暗黑主题另需应用 `V5__user_theme.sql`（已有用户默认 `dark`）。升级时先备份，再启动 API 让 Flyway 依次应用迁移，最后重启 API / worker，刷新前端。功能验收由用户执行，见[交付记录](docs/ops/2026-10-29-import-v22-handoff.md)。
 
 ## 8. IntelliJ IDEA 配置

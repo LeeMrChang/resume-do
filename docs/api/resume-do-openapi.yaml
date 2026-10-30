@@ -1,0 +1,2376 @@
+openapi: 3.1.0
+info:
+  title: resume-do API（前端联调契约）
+  version: "2026-10-30"
+  description: |
+    resume-do 简历工作台的 HTTP 调用契约，覆盖认证、简历读写、原件、导入、导出与 AI 润色。
+    本文件依据当前 `apps/api` 的 Controller / DTO / Service 实现整理，供新前端接手联调使用；
+    当前前端调用实现见 `apps/web/src/api.ts`。
+
+    > **端点范围**：`/api` 下共 28 个 operation。健康检查、注册、登录、退出为公开接口，其余均需要登录 Session。
+    > **实现基线**：2026-10-30。
+    > **配套文档**：[主题偏好接口](auth-me.md)、[AI 润色与精炼接口](ai-rewrite.md)。
+
+    ---
+
+    ## 1. 鉴权与请求约定
+
+    - 登录态使用 **Cookie Session**（Spring Security，默认 Cookie 名 `JSESSIONID`）。
+      登录 / 注册成功后服务端 `Set-Cookie`，之后请求需要浏览器自动携带该 Cookie。
+    - 前端 `fetch` 必须使用同源相对路径并带 `credentials: 'include'`；API 已关闭 CORS，
+      开发环境由 Vite 代理 `/api`，生产环境由 Nginx 代理 `/api`。
+    - Session 默认有效期 7 天；Session 保存在 API 进程内存中，**重启 API 后需要重新登录**。
+    - 当前关闭了 CSRF 校验，不需要额外 CSRF Token；请勿把该配置复制到跨站场景。
+    - 公开接口：`GET /api/health`、`POST /api/auth/register`、`POST /api/auth/login`、`POST /api/auth/logout`。
+      其余接口未登录统一返回 `401 { "code": "UNAUTHORIZED", "message": "请先登录", "details": {} }`。
+    - JSON 请求使用 `Content-Type: application/json`；文件上传使用 `multipart/form-data`，字段名固定为 `file`。
+    - 序列化使用 Jackson，`default-property-inclusion` 为 `non_null`：**值为 null 的字段会直接省略，而不是返回 null**。
+    - 时间字段为 ISO-8601 UTC 字符串，例如 `2026-10-30T08:12:34.567Z`。
+
+    ## 2. 标识、版本与数据模型
+
+    - 简历、导入任务、导出任务、原件的公开 ID 均为 **32 位小写十六进制字符串**（UUID 去掉连字符）。
+    - 简历 `revision` 从 `0` 开始，每次成功写入 `+1`；`PATCH` 通过 `baseRevision` 做乐观锁。
+    - `clientMutationId` 由客户端为「一次逻辑保存」生成（1–64 字符，建议 UUID）。
+      同一账号、同一简历重放相同 `clientMutationId` 时直接返回当前内容，不会重复递增 revision。
+    - 简历 `kind`：
+      - `structured`：可编辑简历；默认导入路径（`/api/imports/direct`）直接产出该类型，并关联原件。
+      - `original`：旧版「原件简历」，只读；可通过 `POST /api/imports/from-original/{id}` 在原 ID 上转为可编辑。
+    - `source` 为原件信息；通过 `POST /api/resumes` 直接新建的简历没有原件，该字段省略。
+    - 简历文档结构与版式结构见 `ResumeDocument`、`ResumeAppearance`。
+      服务端会补全缺失文本字段、清洗正文 HTML，并校验长度、模板、颜色等约束。
+
+    ## 3. 错误协议
+
+    所有错误响应体结构一致（含 401/403/404/409/410/413/429/5xx）：
+
+    ```json
+    { "code": "REVISION_CONFLICT", "message": "简历已在其他窗口更新，请重新加载或保留本地副本", "details": {} }
+    ```
+
+    | 字段 | 类型 | 说明 |
+    | --- | --- | --- |
+    | `code` | string | 受控错误码，见 `ErrorCode`；前端按 code 分支，不要匹配 message |
+    | `message` | string | 可直接展示的中文原因 |
+    | `details` | object | 附加信息；无附加信息时为 `{}` |
+
+    常见 HTTP 状态与 code：
+
+    | HTTP | code | 场景 |
+    | --- | --- | --- |
+    | 400 | `VALIDATION_FAILED` | Bean Validation 失败，`details.fields` 为字段错误映射 |
+    | 400 | `INVALID_JSON` | 请求体不是合法 JSON |
+    | 400 | `BAD_REQUEST` | 业务校验失败（文档、版式、草稿结构等） |
+    | 400 | `FILE_TOO_LARGE` / `UNSUPPORTED_FORMAT` / `INVALID_FILE` / `PROTECTED_FILE` / `DAMAGED_FILE` / `SCANNED_PDF` / `NO_TEXT` / `TEXT_LIMIT` / `RESOURCE_LIMIT` / `UNSAFE_ARCHIVE` / `UNSAFE_XML` | 上传或解析文件不合法 |
+    | 401 | `UNAUTHORIZED` | 未登录或 Session 失效 |
+    | 403 | `FORBIDDEN` | 已登录但无权访问 |
+    | 404 | `NOT_FOUND` | 资源不存在或不属于当前账号 |
+    | 409 | `REVISION_CONFLICT` | 简历 revision 已变化，`details.currentRevision` / `details.updatedAt` |
+    | 409 | `ORIGINAL_RESUME_READ_ONLY` / `ORIGINAL_RESUME_SOURCE_DOWNLOAD` | 原件简历不可编辑 / 不可走编辑版导出 |
+    | 409 | `EXPORT_NOT_READY` / `IMPORT_CONFLICT` / `DUPLICATE` / `EMAIL_EXISTS` | 状态冲突或重复 |
+    | 410 | `SOURCE_MISSING` / `IMPORT_EXPIRED` / `FILE_REMOVED` / `FILE_EXPIRED` / `FILE_MISSING` | 资源已过期或被清理 |
+    | 413 | `FILE_TOO_LARGE` | 上传超过容器上限（个别路径返回 400，见各接口说明） |
+    | 429 | `RESUME_LIMIT_REACHED` / `IMPORT_LIMIT` / `IMPORT_BUSY` | 简历数、导入任务数或解析并发达到上限 |
+    | 500 | `INTERNAL_ERROR` | 未预期异常，message 不含内部细节 |
+    | 503 | `SOURCE_DELETE_PENDING` | 简历已删除，但原件文件清理失败，后台会重试 |
+
+    AI 接口另有 `AI_*` 错误码，见 `ErrorCode` 与 `/api/ai/rewrite` 的说明。
+
+    ## 4. 限额与时效
+
+    | 项目 | 限制 | 触发 |
+    | --- | --- | --- |
+    | 每账号简历数 | 5 份未删除简历 | 429 `RESUME_LIMIT_REACHED` |
+    | 每账号未确认导入任务 | 20 个（`processing` / `ready` / `failed`） | 429 `IMPORT_LIMIT` |
+    | 直接导入并发 | 同时 2 个解析 | 429 `IMPORT_BUSY` |
+    | 上传大小 | 单文件 ≤ 20 MiB，单请求 ≤ 21 MiB | 400/413 `FILE_TOO_LARGE` |
+    | 导入任务有效期 | 上传后 24 小时 | 410 `IMPORT_EXPIRED` |
+    | 旧版异步解析超时 | 30 秒 | 任务失败 `PARSE_TIMEOUT` |
+    | 编辑版 PDF 下载有效期 | 生成完成后默认 10 分钟（`RESUME_DO_DOWNLOAD_TTL_MINUTES`） | 410 `FILE_EXPIRED` |
+    | 可编辑导入 PDF | ≤ 100 页，提取文字 ≤ 100000 字 | 400 `RESOURCE_LIMIT` / `TEXT_LIMIT` |
+    | DOCX 安全限制 | ≤ 512 个压缩包条目；单条目 ≤ 10 MiB；解压总量 ≤ 50 MiB；禁止宏、ActiveX、嵌入对象、DTD/外部实体 | 400 `UNSAFE_ARCHIVE` / `UNSAFE_XML` |
+    | 简历正文 | 单个模块正文 ≤ 20000 字符；全简历纯文本 ≤ 100000 字符；模块 ≤ 30 个，单模块条目 ≤ 30 条 | 400 `BAD_REQUEST` |
+    | AI | 每账号 20 次/UTC 日、5 次/滚动分钟；单次正文 ≤ 6000 字符 | 429 `AI_*` |
+
+    ## 5. 端点总览
+
+    | 方法 | 路径 | 说明 | 鉴权 |
+    | --- | --- | --- | --- |
+    | GET | `/api/health` | 健康检查 | 公开 |
+    | POST | `/api/auth/register` | 注册并自动登录 | 公开 |
+    | POST | `/api/auth/login` | 登录 | 公开 |
+    | POST | `/api/auth/logout` | 退出登录 | 公开 |
+    | GET | `/api/auth/me` | 当前用户 | 需要 |
+    | PATCH | `/api/auth/me` | 保存主题偏好 | 需要 |
+    | GET | `/api/resumes` | 简历列表（最多 5 条） | 需要 |
+    | POST | `/api/resumes` | 新建空白简历 | 需要 |
+    | GET | `/api/resumes/{publicId}` | 读取简历 | 需要 |
+    | PATCH | `/api/resumes/{publicId}` | 保存简历（乐观锁） | 需要 |
+    | DELETE | `/api/resumes/{publicId}` | 删除简历（软删） | 需要 |
+    | GET | `/api/resumes/{publicId}/source` | 查看 / 下载原件 | 需要 |
+    | POST | `/api/resumes/originals` | 上传纯原件（仅 PDF） | 需要 |
+    | POST | `/api/resumes/{publicId}/exports` | 创建编辑版 PDF 导出任务 | 需要 |
+    | GET | `/api/exports/{publicId}` | 查询导出任务 | 需要 |
+    | GET | `/api/exports/{publicId}/file` | 下载编辑版 PDF | 需要 |
+    | POST | `/api/imports` | 旧版异步导入（保留） | 需要 |
+    | GET | `/api/imports` | 旧版导入任务列表（保留） | 需要 |
+    | GET | `/api/imports/{id}` | 旧版导入任务详情（保留） | 需要 |
+    | PATCH | `/api/imports/{id}` | 保存旧版校对草稿（保留） | 需要 |
+    | POST | `/api/imports/{id}/confirm` | 确认旧版草稿并新建简历（保留） | 需要 |
+    | POST | `/api/imports/{id}/retry` | 重试旧版解析（保留） | 需要 |
+    | DELETE | `/api/imports/{id}` | 放弃旧版导入任务（保留） | 需要 |
+    | GET | `/api/imports/{id}/file` | 下载旧版导入的临时原文件（保留） | 需要 |
+    | POST | `/api/imports/direct` | 导入并直接创建可编辑简历（默认入口） | 需要 |
+    | POST | `/api/imports/direct/{id}` | 导入并原位覆盖可编辑简历（默认入口） | 需要 |
+    | POST | `/api/imports/from-original/{id}` | 旧版原件简历转为可编辑（同 ID） | 需要 |
+    | POST | `/api/ai/rewrite` | AI 润色 / 精炼 | 需要 |
+
+    > 「旧版（保留）」接口为早期校对弹窗与草稿流程，默认 UI 已不再使用；新前端只需接入
+    > `direct` 导入、`from-original`、简历、原件、导出、AI 与认证接口。
+
+    ## 6. 联调注意事项
+
+    1. **先登录再调用**：除公开接口外均依赖 Cookie Session；401 时跳转登录页。
+    2. **保存必须带 revision 与 clientMutationId**：`409 REVISION_CONFLICT` 表示其他窗口已保存，
+       应提示用户重新加载或保留本地副本，不要盲目覆盖。
+    3. **原件简历只读**：`kind=original` 的简历不能 `PATCH`，也不能走编辑版导出；
+       请用原件下载，或调用 `POST /api/imports/from-original/{id}` 转换后再编辑。
+    4. **导出是异步任务**：创建后 `status` 为 `queued`，需轮询 `GET /api/exports/{id}`；
+       `ready` 后用带 Cookie 的 `fetch` 下载 `/api/exports/{id}/file`，不要直接 `<a download>` 丢失登录态。
+       下载链接有效期为生成完成后约 10 分钟，过期需重新导出。
+    5. **`downloadUrl` 是相对路径**，与当前来源同源拼接；始终携带 Cookie。
+    6. **文件校验以内容为准**：仅改扩展名会被拒绝（PDF 校验 `%PDF-`，DOCX 校验 ZIP 头与文档类型）。
+    7. **扫描件不 OCR**：无可提取文字的 PDF 返回 `SCANNED_PDF`；旧版 `.doc` 需另存为 `.docx`。
+    8. **AI 不写简历**：接口只返回建议文本，采用/写入由前端完成；正文会发送给 DeepSeek，必须先取得用户明确同意。
+
+servers:
+  - url: /
+    description: 同源访问（开发环境 Vite 代理 `/api`，生产环境 Nginx 代理 `/api`）
+  - url: http://localhost:8080
+    description: 本地直连 Java API
+
+tags:
+  - name: 系统
+    description: 健康检查
+  - name: 认证
+    description: 注册、登录、退出、当前用户与主题偏好
+  - name: 简历
+    description: 简历列表、读写、删除与原件读取
+  - name: 原件
+    description: 纯原件上传
+  - name: 导入
+    description: 可编辑导入（默认）、原件转可编辑、旧版异步导入（保留）
+  - name: 导出
+    description: 编辑版 PDF 异步导出与下载
+  - name: AI
+    description: 正文润色与精炼
+
+security:
+  - sessionCookie: []
+
+paths:
+  /api/health:
+    get:
+      tags: [系统]
+      summary: 健康检查
+      operationId: healthCheck
+      security: []
+      responses:
+        "200":
+          description: API 正常
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: ok
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/register:
+    post:
+      tags: [认证]
+      summary: 注册并自动登录
+      operationId: register
+      security: []
+      description: |
+        注册成功后立即建立登录 Session（响应同登录），同时下发 `JSESSIONID` Cookie。
+
+        - 邮箱统一 `trim` 并转小写；密码长度 8–72（BCrypt）。
+        - `displayName` 省略或为空白时，默认取邮箱 `@` 前部分。
+        - 新用户主题偏好默认为 `dark`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            example:
+              email: user@example.com
+              password: Password123
+              displayName: 示例用户
+      responses:
+        "200":
+          description: 注册成功，已建立登录 Session
+          headers:
+            Set-Cookie:
+              description: 登录 Session Cookie（默认 JSESSIONID）
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+              example:
+                id: 42
+                email: user@example.com
+                displayName: 示例用户
+                themePreference: dark
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: 邮箱已注册（`EMAIL_EXISTS`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EMAIL_EXISTS
+                message: 该邮箱已注册
+                details: {}
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/login:
+    post:
+      tags: [认证]
+      summary: 登录
+      operationId: login
+      security: []
+      description: |
+        校验邮箱密码并建立 Session；成功后会更换 Session ID（防会话固定）。
+        邮箱或密码错误统一返回 `401 UNAUTHORIZED`，不区分账号是否存在。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              email: user@example.com
+              password: Password123
+      responses:
+        "200":
+          description: 登录成功
+          headers:
+            Set-Cookie:
+              description: 登录 Session Cookie（默认 JSESSIONID）
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/logout:
+    post:
+      tags: [认证]
+      summary: 退出登录
+      operationId: logout
+      security: []
+      description: 使当前 Session 失效；未登录调用也返回 204（幂等）。
+      responses:
+        "204":
+          description: 已退出（无响应体）
+
+  /api/auth/me:
+    get:
+      tags: [认证]
+      summary: 获取当前登录用户
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: 当前用户
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+              example:
+                id: 42
+                email: user@example.com
+                displayName: 示例用户
+                themePreference: dark
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [认证]
+      summary: 保存主题偏好
+      operationId: updateThemePreference
+      description: 只修改 `themePreference`，不影响邮箱、显示名与密码。详见 `docs/api/auth-me.md`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThemePreferenceRequest"
+            example:
+              themePreference: light
+      responses:
+        "200":
+          description: 更新后的用户
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: 字段缺失或取值不合法（`VALIDATION_FAILED`，`details.fields.themePreference`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: VALIDATION_FAILED
+                message: 主题只能是 light、dark 或 system
+                details:
+                  fields:
+                    themePreference: 主题只能是 light、dark 或 system
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/resumes:
+    get:
+      tags: [简历]
+      summary: 获取当前账号的简历列表
+      operationId: listResumes
+      description: |
+        返回未删除的简历，最多 5 条，包含 `structured` 与 `original` 两种类型。
+        列表只包含摘要，不包含 `document` / `appearance`。
+      responses:
+        "200":
+          description: 简历摘要数组（无分页）
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 5
+                items:
+                  $ref: "#/components/schemas/ResumeSummary"
+              example:
+                - id: 8ad6b59c068f402cbea3eb4dd941dcdf
+                  title: 张三_Java 后端工程师
+                  revision: 3
+                  templateId: "1045"
+                  updatedAt: "2026-10-30T08:12:34.567Z"
+                  kind: structured
+                  source:
+                    filename: 张三-Java后端.pdf
+                    mime: application/pdf
+                    bytes: 183420
+                    pages: 2
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [简历]
+      summary: 新建空白简历
+      operationId: createResume
+      description: |
+        新建一份 `structured` 简历，不关联原件（`source` 省略）。
+        `title` 省略或为空白时使用「我的简历」；最多 100 字。
+        文档与版式由服务端校验、补全并清洗后保存，`revision` 从 0 开始。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResumeRequest"
+            example:
+              title: 我的简历
+              document:
+                schemaVersion: 1
+                basic:
+                  name: 张三
+                  gender: 男
+                  city: 上海
+                  phone: "13800000000"
+                  email: zhangsan@example.com
+                  experienceYears: 5 年
+                  photo: ""
+                  showPhoto: true
+                intent:
+                  role: Java 后端工程师
+                  city: 上海
+                sections:
+                  - id: work
+                    type: records
+                    title: 工作经验
+                    visible: true
+                    items:
+                      - id: w1
+                        title: 某科技有限公司
+                        role: 后端工程师
+                        startMonth: "2021-03"
+                        endMonth: ""
+                        ongoing: true
+                        body: "<p>负责订单服务与慢 SQL 优化。</p>"
+              appearance:
+                templateId: "1045"
+                fontId: sans
+                fontSize: 14
+                lineHeight: 1.5
+                sectionGap: 18
+                pageMargin: 42
+                themeColor: "#1f5aa6"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          description: 简历数量已达上限（`RESUME_LIMIT_REACHED`，最多 5 份）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: RESUME_LIMIT_REACHED
+                message: 已达简历数量上限（5 份），请先删除不需要的简历
+                details: {}
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/resumes/{publicId}:
+    parameters:
+      - $ref: "#/components/parameters/ResumePublicId"
+    get:
+      tags: [简历]
+      summary: 读取简历详情
+      operationId: getResume
+      responses:
+        "200":
+          description: 简历详情（含文档与版式）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [简历]
+      summary: 保存简历（乐观锁）
+      operationId: updateResume
+      description: |
+        保存标题、文档、版式中的一项或多项，成功后 `revision + 1`。
+
+        - `baseRevision` 必须等于当前 revision，否则 409 `REVISION_CONFLICT`。
+        - `clientMutationId` 为一次逻辑保存的幂等标识：重放相同值时直接返回当前内容，
+          不再递增 revision（即使 baseRevision 已过期）。
+        - 只传 `title` 时，服务端保留原文档与版式并重新校验。
+        - 传了 `document` / `appearance` 时，服务端会补全默认字段、清洗正文 HTML
+          （允许 `p` `br` `strong` `b` `em` `i` `u` `ul` `ol` `li` `a`，链接仅 http/https/mailto）并校验。
+        - `kind=original` 的原件简历不可编辑，返回 409 `ORIGINAL_RESUME_READ_ONLY`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateResumeRequest"
+            example:
+              baseRevision: 3
+              clientMutationId: 6f1d6f80-1f7a-4f5e-9f5f-2f6a1c9d0e11
+              title: 张三_Java 后端工程师
+              document:
+                schemaVersion: 1
+                basic:
+                  name: 张三
+                  gender: 男
+                  city: 上海
+                  phone: "13800000000"
+                  email: zhangsan@example.com
+                  experienceYears: 5 年
+                  photo: ""
+                  showPhoto: true
+                intent:
+                  role: Java 后端工程师
+                  city: 上海
+                sections: []
+              appearance:
+                templateId: "1045"
+                fontId: sans
+                fontSize: 14
+                lineHeight: 1.5
+                sectionGap: 18
+                pageMargin: 42
+                themeColor: "#1f5aa6"
+      responses:
+        "200":
+          description: 保存后的简历
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            revision 冲突或原件简历只读：
+            - `REVISION_CONFLICT`：`details.currentRevision`、`details.updatedAt`
+            - `ORIGINAL_RESUME_READ_ONLY`：原件简历不可编辑
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                revisionConflict:
+                  value:
+                    code: REVISION_CONFLICT
+                    message: 简历已在其他窗口更新，请重新加载或保留本地副本
+                    details:
+                      currentRevision: 4
+                      updatedAt: "2026-10-30T08:20:00Z"
+                originalReadOnly:
+                  value:
+                    code: ORIGINAL_RESUME_READ_ONLY
+                    message: 原件简历不支持编辑
+                    details: {}
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [简历]
+      summary: 删除简历（软删除）
+      operationId: deleteResume
+      description: |
+        软删除简历记录，并清理关联原件文件；无恢复入口。`structured` 与 `original` 都可删除。
+
+        数据库删除成功但文件清理失败时返回 503 `SOURCE_DELETE_PENDING`：
+        简历已经不可见，后台每 60 秒重试清理，不需要前端重复删除。
+      responses:
+        "204":
+          description: 删除成功（无响应体）
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: 简历已删除，但原件文件清理失败（`SOURCE_DELETE_PENDING`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: SOURCE_DELETE_PENDING
+                message: 简历已移除，原文件清理失败，系统将重试
+                details: {}
+
+  /api/resumes/{publicId}/source:
+    parameters:
+      - $ref: "#/components/parameters/ResumePublicId"
+      - name: download
+        in: query
+        required: false
+        description: 传 `1` 时以附件下载；其他值或省略时 `inline` 预览
+        schema:
+          type: integer
+          enum: [0, 1]
+          default: 0
+    get:
+      tags: [简历]
+      summary: 查看 / 下载原件
+      operationId: downloadResumeSource
+      description: |
+        返回简历关联的原始文件字节（PDF 或 DOCX），不经过任何转换。
+
+        - `kind=original` 返回上传的原始 PDF；`structured` 且由导入创建时返回导入原件。
+        - 通过 `POST /api/resumes` 新建的简历没有原件，返回 404 `NOT_FOUND`。
+        - 响应带 `Content-Disposition`（`inline` 或 `attachment`）、`X-Content-Type-Options: nosniff`、
+          `Cache-Control: no-store`；前端下载时须携带 Cookie。
+      responses:
+        "200":
+          description: 原件字节流
+          headers:
+            Content-Disposition:
+              description: 文件名（RFC 5987，`filename*=UTF-8''...`）
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 简历不存在，或该简历没有原件（`NOT_FOUND`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "410":
+          description: 原件文件已被清理或路径失效（`SOURCE_MISSING`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: SOURCE_MISSING
+                message: 原文件不存在，请重新导入
+                details: {}
+
+  /api/resumes/originals:
+    post:
+      tags: [原件]
+      summary: 上传纯原件（仅 PDF）
+      operationId: uploadOriginalResume
+      description: |
+        上传一份原始 PDF，创建 `kind=original` 的只读原件简历。
+
+        - 仅支持 PDF（≤ 20 MiB）；校验 `%PDF-` 文件头；加密、空页或损坏文件返回 400。
+        - 文件名会清洗（去掉路径与非法字符），标题取文件名（去掉扩展名，最多 100 字）。
+        - 文档内容保存为空白基线，仅用于预览契约；原件版下载不依赖 PDF worker。
+        - 该路径下超过 20 MiB 的请求返回 **400** `FILE_TOO_LARGE`（不是 413）。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF 文件，≤ 20 MiB
+      responses:
+        "201":
+          description: 原件上传成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          description: 简历数量已达上限（`RESUME_LIMIT_REACHED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/resumes/{publicId}/exports:
+    parameters:
+      - $ref: "#/components/parameters/ResumePublicId"
+    post:
+      tags: [导出]
+      summary: 创建编辑版 PDF 导出任务
+      operationId: createExport
+      description: |
+        固定当前 revision 的文档快照并创建异步导出任务，由 PDF worker 生成文件。
+
+        - `revision` 必须等于当前简历 revision，否则 409 `REVISION_CONFLICT`。
+        - 原件简历（`kind=original`）不能走编辑版导出，返回 409 `ORIGINAL_RESUME_SOURCE_DOWNLOAD`。
+        - `idempotencyKey` 为 8–64 字符；同一账号、同一 key 且 revision 校验通过时，直接返回已有任务。
+        - `filename` 可省略；省略时由姓名 + 意向职位生成，自动补 `.pdf` 并清洗非法字符，最长 150 字。
+        - 任务创建后状态依次为 `queued` → `rendering` → `ready` / `failed`；
+          `ready` 后下载链接默认 10 分钟内有效。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExportRequest"
+            example:
+              revision: 3
+              idempotencyKey: export-20261030-001
+              filename: 张三_Java后端工程师.pdf
+      responses:
+        "202":
+          description: 导出任务已创建（或返回幂等命中的已有任务）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJob"
+              example:
+                id: 0f6a9c2e4b8d4f1a9c3e5d7b1a2c4e6f
+                status: queued
+                filename: 张三_Java后端工程师.pdf
+                createdAt: "2026-10-30T08:30:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: revision 不匹配或原件简历不可导出（`REVISION_CONFLICT` / `ORIGINAL_RESUME_SOURCE_DOWNLOAD`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                revisionConflict:
+                  value:
+                    code: REVISION_CONFLICT
+                    message: 简历已更新，请保存后再导出
+                    details:
+                      currentRevision: 4
+                originalResume:
+                  value:
+                    code: ORIGINAL_RESUME_SOURCE_DOWNLOAD
+                    message: 原件简历请使用原件下载
+                    details: {}
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/exports/{publicId}:
+    parameters:
+      - name: publicId
+        in: path
+        required: true
+        description: 导出任务公开 ID（32 位小写十六进制）
+        schema:
+          type: string
+          pattern: "^[a-f0-9]{32}$"
+    get:
+      tags: [导出]
+      summary: 查询导出任务
+      operationId: getExport
+      description: |
+        建议每 800–1500 ms 轮询一次，直到 `ready`、`expired` 或 `failed`。
+        `ready` 时返回相对路径 `downloadUrl`；`expired` 表示文件已过下载有效期，需要重新导出。
+        `failed` 时 `errorCode` 为 worker 错误码（如 `CONTENT_OVERFLOW`、`RENDER_TIMEOUT`）。
+      responses:
+        "200":
+          description: 导出任务状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJob"
+              examples:
+                queued:
+                  value:
+                    id: 0f6a9c2e4b8d4f1a9c3e5d7b1a2c4e6f
+                    status: queued
+                    filename: 张三_Java后端工程师.pdf
+                    createdAt: "2026-10-30T08:30:00Z"
+                ready:
+                  value:
+                    id: 0f6a9c2e4b8d4f1a9c3e5d7b1a2c4e6f
+                    status: ready
+                    filename: 张三_Java后端工程师.pdf
+                    downloadUrl: /api/exports/0f6a9c2e4b8d4f1a9c3e5d7b1a2c4e6f/file
+                    expiresAt: "2026-10-30T08:40:00Z"
+                    createdAt: "2026-10-30T08:30:00Z"
+                failed:
+                  value:
+                    id: 0f6a9c2e4b8d4f1a9c3e5d7b1a2c4e6f
+                    status: failed
+                    filename: 张三_Java后端工程师.pdf
+                    errorCode: CONTENT_OVERFLOW
+                    errorMessage: 内容超出页面可容纳范围
+                    createdAt: "2026-10-30T08:30:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/exports/{publicId}/file:
+    parameters:
+      - name: publicId
+        in: path
+        required: true
+        description: 导出任务公开 ID（32 位小写十六进制）
+        schema:
+          type: string
+          pattern: "^[a-f0-9]{32}$"
+    get:
+      tags: [导出]
+      summary: 下载编辑版 PDF
+      operationId: downloadExport
+      description: |
+        返回生成的 PDF 字节流，`Content-Disposition: attachment`、`Cache-Control: no-store`。
+
+        - 必须用带 Cookie 的 `fetch` 获取 blob 后触发下载；直接打开 URL 或 `<a download>` 在跨端场景可能丢失登录态。
+        - 任务未完成返回 409 `EXPORT_NOT_READY`（`details.status` 为内部状态数字）；
+          超过有效期返回 410 `FILE_EXPIRED`；文件缺失返回 410 `FILE_MISSING`。
+      responses:
+        "200":
+          description: PDF 文件
+          headers:
+            Content-Disposition:
+              description: 附件文件名（RFC 5987）
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 文件尚未生成完成（`EXPORT_NOT_READY`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: EXPORT_NOT_READY
+                message: 文件尚未生成完成
+                details:
+                  status: 1
+        "410":
+          description: 下载链接已过期或文件缺失（`FILE_EXPIRED` / `FILE_MISSING`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                expired:
+                  value:
+                    code: FILE_EXPIRED
+                    message: 下载链接已过期，请重新导出
+                    details: {}
+                missing:
+                  value:
+                    code: FILE_MISSING
+                    message: 导出文件不存在，请重新导出
+                    details: {}
+
+  /api/imports:
+    post:
+      tags: [导入]
+      summary: 旧版异步导入（保留）
+      operationId: uploadImport
+      description: |
+        早期「校对草稿」流程：上传 PDF / DOCX 后异步解析，返回可编辑草稿任务，
+        用户保存草稿后再确认创建新简历。默认 UI 已改用 `/api/imports/direct`，此接口仅为兼容保留。
+
+        - 支持 PDF、DOCX，单文件 ≤ 20 MiB；文件名长度 ≤ 255。
+        - 每个账号最多保留 20 个未确认任务，超出返回 429 `IMPORT_LIMIT`。
+        - 任务 24 小时有效；解析超时 30 秒；创建时不占用简历名额。
+        - 返回 `202`，`status=processing`；需轮询 `GET /api/imports/{id}` 直到 `ready` / `failed`。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF 或 DOCX，≤ 20 MiB
+      responses:
+        "202":
+          description: 导入任务已创建，开始异步解析
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          description: 未确认导入任务达到上限（`IMPORT_LIMIT`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: IMPORT_LIMIT
+                message: 最多保留 20 份未确认导入，请先放弃不需要的草稿
+                details: {}
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      tags: [导入]
+      summary: 旧版导入任务列表（保留）
+      operationId: listImports
+      description: 最多返回 20 条仍在有效期内、状态为 `processing` / `ready` / `failed` 的任务。
+      responses:
+        "200":
+          description: 导入任务数组
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 20
+                items:
+                  $ref: "#/components/schemas/ImportJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/imports/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ImportId"
+    get:
+      tags: [导入]
+      summary: 旧版导入任务详情（保留）
+      operationId: getImport
+      description: |
+        返回任务当前状态。`ready` 时 `message` 可能是解析警告（不是错误）；
+        `draft` 为可编辑草稿，`version` 用于后续保存 / 确认的乐观锁。
+      responses:
+        "200":
+          description: 导入任务
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          description: 任务已过期（`IMPORT_EXPIRED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: IMPORT_EXPIRED
+                message: 导入任务已过期，请重新上传
+                details: {}
+    patch:
+      tags: [导入]
+      summary: 保存旧版校对草稿（保留）
+      operationId: saveImportDraft
+      description: |
+        仅允许 `ready` / `failed` 状态保存；`version` 必须匹配，成功后任务 version +1。
+        草稿整体最大约 1 MB；服务端只做结构检查，确认时才做完整校验。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportSaveRequest"
+            example:
+              version: 2
+              draft:
+                title: 张三_Java 后端工程师
+                document:
+                  schemaVersion: 1
+                  basic:
+                    name: 张三
+                  intent:
+                    role: Java 后端工程师
+                  sections: []
+                appearance:
+                  templateId: "1045"
+                  fontId: sans
+                  fontSize: 14
+                  lineHeight: 1.5
+                  sectionGap: 18
+                  pageMargin: 42
+                  themeColor: "#1f5aa6"
+      responses:
+        "200":
+          description: 保存后的任务（version 已递增）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: version 不匹配或任务正在解析（`IMPORT_CONFLICT`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: IMPORT_CONFLICT
+                message: 草稿已更新或正在解析，请重新加载后操作
+                details: {}
+        "410":
+          description: 任务已过期（`IMPORT_EXPIRED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      tags: [导入]
+      summary: 放弃旧版导入任务（保留）
+      operationId: cancelImport
+      description: 取消任务并清理临时原文件；已确认的任务不能放弃（400）。
+      responses:
+        "204":
+          description: 已放弃（无响应体）
+        "400":
+          description: 已确认的任务不能放弃（`BAD_REQUEST`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          description: 任务已过期（`IMPORT_EXPIRED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/imports/{id}/confirm:
+    parameters:
+      - $ref: "#/components/parameters/ImportId"
+    post:
+      tags: [导入]
+      summary: 确认旧版草稿并创建简历（保留）
+      operationId: confirmImport
+      description: |
+        用最新草稿创建一份新的 `structured` 简历（新 ID），并复制导入原文件作为其原件；
+        成功后清理导入任务临时文件。已确认的任务再次调用直接返回当时创建的简历（幂等）。
+
+        - 仅 `ready` / `failed` 可确认；`version` 必须匹配。
+        - 确认时会做完整文档校验；可能因文档不合法返回 400。
+        - 新建简历占用 5 份名额，可能返回 429 `RESUME_LIMIT_REACHED`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportConfirmRequest"
+            example:
+              version: 3
+      responses:
+        "200":
+          description: 已确认；返回新建（或此前已创建）的简历
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: version 不匹配（`IMPORT_CONFLICT`，请先保存最新草稿）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "410":
+          description: 任务已过期（`IMPORT_EXPIRED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: 简历数量已达上限（`RESUME_LIMIT_REACHED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/imports/{id}/retry:
+    parameters:
+      - $ref: "#/components/parameters/ImportId"
+    post:
+      tags: [导入]
+      summary: 重试旧版导入解析（保留）
+      operationId: retryImport
+      description: 仅 `ready` / `failed` 可重试；重置为 `processing` 并递增 version，30 秒超时。
+      responses:
+        "200":
+          description: 已重新提交解析
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 任务状态已变化（`IMPORT_CONFLICT`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "410":
+          description: 任务已过期（`IMPORT_EXPIRED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/imports/{id}/file:
+    parameters:
+      - $ref: "#/components/parameters/ImportId"
+    get:
+      tags: [导入]
+      summary: 下载旧版导入的临时原文件（保留）
+      operationId: downloadImportFile
+      description: 返回上传时的原始 PDF / DOCX；确认或放弃后文件会清理，返回 410 `FILE_REMOVED`。
+      responses:
+        "200":
+          description: 原始文件字节流
+          headers:
+            Content-Disposition:
+              description: 附件文件名
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          description: 原文件已清理（`FILE_REMOVED`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/imports/direct:
+    post:
+      tags: [导入]
+      summary: 导入并直接创建可编辑简历（默认入口）
+      operationId: importDirect
+      description: |
+        默认导入路径：上传 PDF / DOCX，同步解析为可编辑内容并直接创建一份
+        `kind=structured` 简历，同时把上传文件保存为该简历的原件。不创建 `import_jobs`，
+        不经过校对表单；返回后可直接进入编辑器。
+
+        - 支持 PDF / DOCX，≤ 20 MiB；扫描件无文字层拒绝（`SCANNED_PDF`）；旧版 `.doc` 需另存为 `.docx`。
+        - PDF 超过 100 页或文字超过 100000 字返回 400（`RESOURCE_LIMIT` / `TEXT_LIMIT`）。
+        - DOCX 含宏、ActiveX、嵌入对象、异常压缩包或 DTD/外部实体时返回 400。
+        - 解析并发为 2，繁忙时返回 429 `IMPORT_BUSY`；新建简历占用 5 份名额。
+        - 该路径下超过 20 MiB 的请求返回 **400** `FILE_TOO_LARGE`（不是 413）。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF 或 DOCX，≤ 20 MiB
+      responses:
+        "201":
+          description: 可编辑简历已创建（关联原件）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          description: 简历数量已达上限（`RESUME_LIMIT_REACHED`）或解析繁忙（`IMPORT_BUSY`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                capacity:
+                  value:
+                    code: RESUME_LIMIT_REACHED
+                    message: 已达简历数量上限（5 份），请先删除不需要的简历
+                    details: {}
+                busy:
+                  value:
+                    code: IMPORT_BUSY
+                    message: 解析服务繁忙，请稍后重试
+                    details: {}
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/imports/direct/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResumeId"
+    post:
+      tags: [导入]
+      summary: 导入并原位覆盖可编辑简历（默认入口）
+      operationId: importDirectOverwrite
+      description: |
+        上传新的 PDF / DOCX，解析后原位覆盖指定简历的标题、文档、版式与原件。
+
+        - 目标简历必须是 `structured`；`original` 返回 400（只能先转可编辑或新建）。
+        - 同一 ID、`revision + 1`；不新增简历、不占用名额。
+        - 旧原件在事务提交后清理；新原件立即可通过 `/api/resumes/{id}/source` 读取。
+        - 文件格式、大小与安全限制同 `POST /api/imports/direct`；解析繁忙返回 429 `IMPORT_BUSY`。
+        - 超过 20 MiB 的请求返回 413 `FILE_TOO_LARGE`（此路径不在 400 特殊处理名单内）。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF 或 DOCX，≤ 20 MiB
+      responses:
+        "200":
+          description: 覆盖后的简历（revision 已递增）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          description: 解析繁忙（`IMPORT_BUSY`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/imports/from-original/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResumeId"
+    post:
+      tags: [导入]
+      summary: 旧版原件简历转为可编辑（同 ID）
+      operationId: openOriginalInEditor
+      description: |
+        针对 `kind=original` 的旧版原件简历：解析其原文件，在原 ID 上转换为 `structured`，
+        `revision + 1`，保留原文件关联，不额外占用简历名额。
+
+        - 若目标已是 `structured`，直接返回当前内容（不做任何修改）。
+        - 原件缺失返回 410 `SOURCE_MISSING`；解析失败按导入错误返回 400。
+        - 解析并发为 2，繁忙时返回 429 `IMPORT_BUSY`。
+      responses:
+        "200":
+          description: 可编辑简历
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResumeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          description: 原件缺失（`SOURCE_MISSING`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: 解析繁忙（`IMPORT_BUSY`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/ai/rewrite:
+    post:
+      tags: [AI]
+      summary: AI 润色 / 精炼正文
+      operationId: aiRewrite
+      description: |
+        对选中的纯文本正文做 `polish`（润色）或 `condense`（精炼），只返回建议，**不写简历**。
+        采用、覆盖确认与自动保存由前端完成。完整背景见 `docs/api/ai-rewrite.md`。
+
+        ### 请求语义
+
+        - `requestId`：一次逻辑操作的 UUID；同账号、同 ID、同输入在 24 小时内重放会返回缓存结果，
+          不再次调用模型、不重复计费。
+        - 同 ID 但正文 / 操作 / 模块 / 岗位变化，返回 409 `AI_REQUEST_CONFLICT`；应换新 ID。
+        - 处理中重放返回 409 `AI_REQUEST_PENDING`；保留原 ID 等待后重试，**不要自动换新 ID 重发**。
+        - `text`：必填非空纯文本，最多 6000 个 UTF-16 单元；保留换行，不接受 HTML 与除换行/回车/Tab 外的控制字符。
+        - `section`：可选，如 `work` / `project` / `skills` / `evaluation`；不是提示词。
+        - `targetRole`：可选，最多 100 字符；不填则省略，不自动推断。
+        - `privacyConsent`：必须为 `true`，表示用户已明确同意把所选正文发送给 DeepSeek。
+
+        ### 计费与额度
+
+        - 每账号 20 次/UTC 日、5 次/滚动分钟；额度按预约次数计算，包含供应商失败、超时与无效结果。
+        - 公共 / 生产配置默认关闭；未启用或未配置密钥时返回 503，不产生模型调用、不占额度。
+
+        ### 前端约定
+
+        1. 首次使用必须明确告知正文与可选岗位会发送给 DeepSeek，用户同意后才发送。
+        2. 只传选中文字或当前正文，避免发送姓名、手机号、邮箱、照片、完整文档或 PDF。
+        3. 模型输出按纯文本展示，不要直接作为 HTML 插入。
+        4. 等待期间允许继续编辑；采用前比较当前内容与发送快照，变化时再次确认。
+        5. 前端超时应略大于后端 30 秒（例如 40 秒）；前端取消 fetch 不保证供应商停止生成或免计费。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiRewriteRequest"
+            example:
+              requestId: ba8264da-73b0-42b7-9671-2755541ae87f
+              action: polish
+              text: 负责订单模块开发，也处理了一些慢 SQL。
+              section: work
+              targetRole: Java 后端工程师
+              privacyConsent: true
+      responses:
+        "200":
+          description: "改写建议（`Cache-Control: no-store`）"
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiRewriteResponse"
+              example:
+                requestId: ba8264da-73b0-42b7-9671-2755541ae87f
+                action: polish
+                originalText: 负责订单模块开发，也处理了一些慢 SQL。
+                rewrittenText: 负责订单模块开发与慢 SQL 优化。
+                warnings:
+                  - AI 建议可能存在事实偏差，请核对公司、时间、技术名称和成果后再采用
+        "400":
+          description: |
+            参数不合法（`VALIDATION_FAILED` / `INVALID_JSON` / `BAD_REQUEST` / `AI_CONSENT_REQUIRED`），
+            包含未同意、超长、HTML、非法 action 等情况。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: |
+            - `AI_REQUEST_CONFLICT`：同 ID 换了输入，应换新 ID
+            - `AI_REQUEST_PENDING`：同 ID 请求处理中，保留 ID 等待后重试
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: |
+            `AI_BUSY` / `AI_RATE_LIMITED` / `AI_QUOTA_EXCEEDED` / `AI_PROVIDER_RATE_LIMITED`；
+            等待后重试，或 UTC 次日额度恢复。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: 供应商网络异常或结果无效（`AI_UNAVAILABLE` / `AI_INVALID_RESULT`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: |
+            `AI_DISABLED` / `AI_NOT_CONFIGURED` / `AI_AUTH_FAILED` / `AI_BALANCE_INSUFFICIENT` / `AI_UNAVAILABLE`；
+            功能关闭、密钥/余额问题或本地处理失败。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "504":
+          description: 整次模型调用超时（`AI_TIMEOUT`，结果不确定，不自动重试）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: |
+        登录 / 注册成功后由服务端下发的 Session Cookie（HttpOnly、SameSite=Lax，默认 7 天）。
+        浏览器会自动携带；前端 fetch 使用 `credentials: 'include'`。
+
+  parameters:
+    ResumePublicId:
+      name: publicId
+      in: path
+      required: true
+      description: 简历公开 ID（32 位小写十六进制）
+      schema:
+        type: string
+        pattern: "^[a-f0-9]{32}$"
+    ResumeId:
+      name: id
+      in: path
+      required: true
+      description: 简历公开 ID（32 位小写十六进制）
+      schema:
+        type: string
+        pattern: "^[a-f0-9]{32}$"
+    ImportId:
+      name: id
+      in: path
+      required: true
+      description: 旧版导入任务公开 ID（32 位小写十六进制）
+      schema:
+        type: string
+        pattern: "^[a-f0-9]{32}$"
+
+  responses:
+    BadRequest:
+      description: 请求参数或文件不合法（具体 code 见接口说明）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            validation:
+              value:
+                code: VALIDATION_FAILED
+                message: 简历正文总长度不能超过 100000 个字符
+                details:
+                  fields:
+                    sections: 简历正文总长度不能超过 100000 个字符
+            badRequest:
+              value:
+                code: BAD_REQUEST
+                message: 简历内容必须是 JSON 对象
+                details: {}
+            file:
+              value:
+                code: SCANNED_PDF
+                message: 扫描版或无可提取文字的 PDF 暂不支持，可手动创建简历
+                details: {}
+    Unauthorized:
+      description: 未登录或 Session 已失效（`UNAUTHORIZED`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: UNAUTHORIZED
+            message: 请先登录
+            details: {}
+    Forbidden:
+      description: 已登录但无权访问（`FORBIDDEN`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: FORBIDDEN
+            message: 无权访问
+            details: {}
+    NotFound:
+      description: 资源不存在或不属于当前账号（`NOT_FOUND`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: NOT_FOUND
+            message: 简历不存在
+            details: {}
+    PayloadTooLarge:
+      description: 上传文件超过限制（`FILE_TOO_LARGE`，单文件 ≤ 20 MiB）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: FILE_TOO_LARGE
+            message: 文件不能超过 20MB
+            details: {}
+    InternalError:
+      description: 服务器内部错误（`INTERNAL_ERROR`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: INTERNAL_ERROR
+            message: 服务器处理失败，请稍后重试
+            details: {}
+
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+
+    ApiError:
+      type: object
+      required: [code, message, details]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+          description: 可直接展示的中文原因
+        details:
+          type: object
+          additionalProperties: true
+          description: 附加信息；无附加信息时为 `{}`
+      example:
+        code: REVISION_CONFLICT
+        message: 简历已在其他窗口更新，请重新加载或保留本地副本
+        details:
+          currentRevision: 4
+          updatedAt: "2026-10-30T08:20:00Z"
+
+    ErrorCode:
+      type: string
+      description: 受控错误码。前端按 code 分支，不要匹配 message。
+      enum:
+        - VALIDATION_FAILED
+        - INVALID_JSON
+        - BAD_REQUEST
+        - UNAUTHORIZED
+        - FORBIDDEN
+        - NOT_FOUND
+        - DUPLICATE
+        - EMAIL_EXISTS
+        - REVISION_CONFLICT
+        - ORIGINAL_RESUME_READ_ONLY
+        - ORIGINAL_RESUME_SOURCE_DOWNLOAD
+        - RESUME_LIMIT_REACHED
+        - SOURCE_MISSING
+        - SOURCE_DELETE_PENDING
+        - FILE_TOO_LARGE
+        - UNSUPPORTED_FORMAT
+        - INVALID_FILE
+        - PROTECTED_FILE
+        - DAMAGED_FILE
+        - EMPTY_FILE
+        - SCANNED_PDF
+        - NO_TEXT
+        - TEXT_LIMIT
+        - RESOURCE_LIMIT
+        - UNSAFE_ARCHIVE
+        - UNSAFE_XML
+        - PARSE_TIMEOUT
+        - PARSE_INTERRUPTED
+        - PARSE_FAILED
+        - IMPORT_BUSY
+        - IMPORT_LIMIT
+        - IMPORT_CONFLICT
+        - IMPORT_EXPIRED
+        - FILE_REMOVED
+        - EXPORT_NOT_READY
+        - FILE_EXPIRED
+        - FILE_MISSING
+        - AI_CONSENT_REQUIRED
+        - AI_REQUEST_CONFLICT
+        - AI_REQUEST_PENDING
+        - AI_BUSY
+        - AI_RATE_LIMITED
+        - AI_QUOTA_EXCEEDED
+        - AI_PROVIDER_RATE_LIMITED
+        - AI_DISABLED
+        - AI_NOT_CONFIGURED
+        - AI_AUTH_FAILED
+        - AI_BALANCE_INSUFFICIENT
+        - AI_UNAVAILABLE
+        - AI_INVALID_RESULT
+        - AI_TIMEOUT
+        - INTERNAL_ERROR
+
+    User:
+      type: object
+      required: [id, email, displayName, themePreference]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 用户内部 ID（不是公开 ID）
+        email:
+          type: string
+          format: email
+          maxLength: 190
+        displayName:
+          type: string
+          maxLength: 100
+        themePreference:
+          type: string
+          enum: [light, dark, system]
+          description: 主题偏好；新注册用户默认 `dark`
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 190
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+        displayName:
+          type: string
+          maxLength: 100
+          description: 省略或空白时默认取邮箱 `@` 前部分
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 190
+        password:
+          type: string
+          maxLength: 72
+
+    ThemePreferenceRequest:
+      type: object
+      required: [themePreference]
+      properties:
+        themePreference:
+          type: string
+          enum: [light, dark, system]
+
+    OriginalSource:
+      type: object
+      required: [filename, mime, bytes]
+      properties:
+        filename:
+          type: string
+          description: 上传时的原始文件名（已清洗路径与非法字符）
+        mime:
+          type: string
+          enum:
+            - application/pdf
+            - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+        bytes:
+          type: integer
+          format: int64
+          minimum: 1
+        pages:
+          type: integer
+          minimum: 1
+          description: PDF 页数；DOCX 没有该字段
+
+    ResumeSummary:
+      type: object
+      required: [id, title, revision, templateId, updatedAt, kind]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-f0-9]{32}$"
+        title:
+          type: string
+          maxLength: 100
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        templateId:
+          $ref: "#/components/schemas/TemplateId"
+        updatedAt:
+          type: string
+          format: date-time
+        kind:
+          $ref: "#/components/schemas/ResumeKind"
+        source:
+          $ref: "#/components/schemas/OriginalSource"
+
+    ResumeResponse:
+      type: object
+      required:
+        - id
+        - title
+        - revision
+        - document
+        - appearance
+        - createdAt
+        - updatedAt
+        - kind
+      properties:
+        id:
+          type: string
+          pattern: "^[a-f0-9]{32}$"
+        title:
+          type: string
+          maxLength: 100
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        document:
+          $ref: "#/components/schemas/ResumeDocument"
+        appearance:
+          $ref: "#/components/schemas/ResumeAppearance"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        kind:
+          $ref: "#/components/schemas/ResumeKind"
+        source:
+          $ref: "#/components/schemas/OriginalSource"
+      example:
+        id: 8ad6b59c068f402cbea3eb4dd941dcdf
+        title: 张三_Java 后端工程师
+        revision: 3
+        kind: structured
+        document:
+          schemaVersion: 1
+          basic:
+            name: 张三
+            gender: 男
+            city: 上海
+            phone: "13800000000"
+            email: zhangsan@example.com
+            experienceYears: 5 年
+            photo: ""
+            showPhoto: true
+            customFields: []
+          intent:
+            role: Java 后端工程师
+            city: 上海
+            salary: 25-35K
+            arrival: 一个月内
+          sections:
+            - id: work
+              type: records
+              title: 工作经验
+              visible: true
+              items:
+                - id: w1
+                  title: 某科技有限公司
+                  role: 后端工程师
+                  startMonth: "2021-03"
+                  endMonth: ""
+                  ongoing: true
+                  body: "<p>负责订单服务与慢 SQL 优化。</p>"
+        appearance:
+          templateId: "1045"
+          fontId: sans
+          fontSize: 14
+          lineHeight: 1.5
+          sectionGap: 18
+          pageMargin: 42
+          themeColor: "#1f5aa6"
+        createdAt: "2026-10-30T08:00:00Z"
+        updatedAt: "2026-10-30T08:12:34.567Z"
+        source:
+          filename: 张三-Java后端.pdf
+          mime: application/pdf
+          bytes: 183420
+          pages: 2
+
+    ResumeKind:
+      type: string
+      enum: [structured, original]
+      description: |
+        `structured` 可编辑；`original` 旧版原件简历，只读。
+        默认导入（`/api/imports/direct`）产出 `structured` 并关联原件。
+
+    TemplateId:
+      type: string
+      description: |
+        模板 ID。59 个编号皮肤 + `imported`（导入原样式）+ 4 个旧版兼容模板。
+        默认 `1045`。模板目录见 `packages/templates/src/catalog.ts`。
+      enum:
+        - "1045"
+        - "1015"
+        - "1004"
+        - "1044"
+        - "1054"
+        - "1057"
+        - "1012"
+        - "1005"
+        - "1046"
+        - "1019"
+        - "1058"
+        - "1056"
+        - "1008"
+        - "1011"
+        - "1023"
+        - "1041"
+        - "1035"
+        - "1034"
+        - "1016"
+        - "1040"
+        - "1020"
+        - "1033"
+        - "1022"
+        - "1002"
+        - "1055"
+        - "1050"
+        - "1039"
+        - "1043"
+        - "1038"
+        - "1051"
+        - "1047"
+        - "1030"
+        - "1032"
+        - "1042"
+        - "1014"
+        - "1027"
+        - "1003"
+        - "1053"
+        - "1037"
+        - "1048"
+        - "1025"
+        - "1021"
+        - "1036"
+        - "1006"
+        - "1007"
+        - "1029"
+        - "1049"
+        - "1031"
+        - "1013"
+        - "1024"
+        - "1028"
+        - "1001"
+        - "1018"
+        - "1052"
+        - "1026"
+        - "1009"
+        - "1000"
+        - "1010"
+        - "1017"
+        - imported
+        - clean
+        - classic
+        - elegant
+        - sidebar
+
+    ResumeDocument:
+      type: object
+      description: |
+        简历文档。请求可只提交业务字段，服务端会补全缺失文本字段（空字符串）、
+        默认布尔值并清洗正文 HTML；响应中的字段为补全后的规范结构。
+      required: [schemaVersion, basic, intent, sections]
+      properties:
+        schemaVersion:
+          type: integer
+          const: 1
+          description: 当前固定为 1
+        importWarning:
+          type: string
+          maxLength: 500
+          description: 导入解析警告，仅导入生成的文档可能带有
+        moduleDefaultsApplied:
+          type: boolean
+          description: 是否已合并默认模块；为 true 后删除的模块不会在再次打开时自动加回
+        basic:
+          $ref: "#/components/schemas/ResumeBasic"
+        intent:
+          $ref: "#/components/schemas/ResumeIntent"
+        sections:
+          type: array
+          maxItems: 30
+          description: 模块列表；模块 ID 不可重复，全简历纯文本不超过 100000 字符
+          items:
+            $ref: "#/components/schemas/ResumeSection"
+
+    ResumeBasic:
+      type: object
+      description: 基本信息。未提供的文本字段会补为空字符串，照片为空时省略展示。
+      properties:
+        name:
+          type: string
+          maxLength: 50
+          default: ""
+        gender:
+          type: string
+          maxLength: 10
+          default: ""
+        city:
+          type: string
+          maxLength: 50
+          default: ""
+        phone:
+          type: string
+          maxLength: 30
+          default: ""
+        email:
+          description: 空字符串或合法邮箱（≤ 120）
+          oneOf:
+            - const: ""
+            - type: string
+              format: email
+              maxLength: 120
+        experienceYears:
+          type: string
+          maxLength: 30
+          default: ""
+        birthMonth:
+          type: string
+          pattern: '^$|^\d{4}-(0[1-9]|1[0-2])$'
+          description: 出生年月，空或 `YYYY-MM`；填写后前端按当前月份自动计算年龄
+        age:
+          type: string
+          maxLength: 30
+          description: 原文年龄 / 无出生年月时的可编辑年龄
+        nativePlace:
+          type: string
+          maxLength: 50
+        ethnicity:
+          type: string
+          maxLength: 50
+        maritalStatus:
+          type: string
+          maxLength: 50
+        politicalStatus:
+          type: string
+          maxLength: 50
+        height:
+          type: string
+          maxLength: 50
+        weight:
+          type: string
+          maxLength: 50
+        showPhoto:
+          type: boolean
+          default: true
+          description: 是否在预览与编辑版导出中展示照片
+        customFields:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label:
+                type: string
+                maxLength: 30
+              value:
+                type: string
+                maxLength: 100
+        photo:
+          description: 内嵌照片（PNG / JPEG / WebP base64 Data URL），空字符串表示无照片
+          oneOf:
+            - const: ""
+            - type: string
+              maxLength: 400000
+              pattern: '^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'
+
+    ResumeIntent:
+      type: object
+      properties:
+        role:
+          type: string
+          maxLength: 100
+          default: ""
+        city:
+          type: string
+          maxLength: 50
+          default: ""
+        salary:
+          type: string
+          maxLength: 50
+          default: ""
+        arrival:
+          type: string
+          maxLength: 50
+          default: ""
+
+    ResumeSection:
+      type: object
+      required: [id, type, title, items]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{0,31}$"
+          description: 模块 ID，小写字母开头，仅小写字母、数字、连字符
+        type:
+          type: string
+          enum: [records, rich]
+          description: "`records` 记录类；`rich` 纯正文类（最多 1 个条目）"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 20
+        visible:
+          type: boolean
+          default: true
+        items:
+          type: array
+          maxItems: 30
+          description: 记录类最多 30 条；正文类最多 1 条
+          items:
+            $ref: "#/components/schemas/ResumeRecordItem"
+      allOf:
+        - if:
+            properties:
+              type:
+                const: rich
+          then:
+            properties:
+              items:
+                maxItems: 1
+
+    ResumeRecordItem:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        title:
+          type: string
+          maxLength: 100
+          default: ""
+          description: 机构 / 项目名称
+        role:
+          type: string
+          maxLength: 100
+          default: ""
+          description: 职位 / 角色
+        startMonth:
+          type: string
+          pattern: '^$|^\d{4}-(0[1-9]|1[0-2])$'
+          default: ""
+        endMonth:
+          type: string
+          pattern: '^$|^\d{4}-(0[1-9]|1[0-2])$'
+          default: ""
+        ongoing:
+          type: boolean
+          default: false
+          description: 至今；为 false 时开始年月不能晚于结束年月
+        body:
+          type: string
+          maxLength: 20000
+          default: ""
+          description: |
+            正文 HTML。服务端使用白名单清洗：
+            允许 `p` `br` `strong` `b` `em` `i` `u` `ul` `ol` `li` `a`，
+            `a` 仅保留 `href` / `rel` 且协议限 http/https/mailto；其余标签与属性会被移除。
+
+    ResumeAppearance:
+      type: object
+      required: [themeColor]
+      description: 版式配置；响应中为补全默认值后的完整对象。
+      properties:
+        templateId:
+          $ref: "#/components/schemas/TemplateId"
+          default: "1045"
+        fontId:
+          type: string
+          enum: [sans, serif, arial]
+          default: sans
+        fontSize:
+          type: integer
+          minimum: 12
+          maximum: 16
+          default: 14
+        lineHeight:
+          type: number
+          minimum: 1.2
+          maximum: 2.2
+          default: 1.5
+        sectionGap:
+          type: integer
+          minimum: 5
+          maximum: 50
+          default: 18
+        pageMargin:
+          type: integer
+          minimum: 24
+          maximum: 60
+          default: 42
+        themeColor:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+          default: "#1f5aa6"
+          description: 主题色，必须为 `#RRGGBB`
+
+    CreateResumeRequest:
+      type: object
+      required: [document, appearance]
+      properties:
+        title:
+          type: string
+          maxLength: 100
+          description: 省略或空白时使用「我的简历」
+        document:
+          $ref: "#/components/schemas/ResumeDocument"
+        appearance:
+          $ref: "#/components/schemas/ResumeAppearance"
+
+    UpdateResumeRequest:
+      type: object
+      required: [baseRevision, clientMutationId]
+      description: "`title` / `document` / `appearance` 至少传一项。"
+      properties:
+        baseRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        clientMutationId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 一次逻辑保存的幂等标识
+        title:
+          type: string
+          maxLength: 100
+        document:
+          $ref: "#/components/schemas/ResumeDocument"
+        appearance:
+          $ref: "#/components/schemas/ResumeAppearance"
+
+    CreateExportRequest:
+      type: object
+      required: [revision, idempotencyKey]
+      properties:
+        revision:
+          type: integer
+          format: int64
+          description: 必须等于简历当前 revision
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 64
+        filename:
+          type: string
+          maxLength: 120
+          description: 省略时由姓名 + 意向职位生成；服务端会清洗并补 `.pdf`
+
+    ExportStatus:
+      type: string
+      enum: [queued, rendering, ready, expired, failed]
+      description: |
+        `queued` 排队中；`rendering` 生成中；`ready` 可下载；
+        `expired` 已过下载有效期；`failed` 生成失败（查看 errorCode）。
+
+    ExportJob:
+      type: object
+      required: [id, status, filename, createdAt]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-f0-9]{32}$"
+        status:
+          $ref: "#/components/schemas/ExportStatus"
+        filename:
+          type: string
+          description: 下载文件名（已清洗并带 `.pdf`）
+        downloadUrl:
+          type: string
+          description: 相对下载路径；仅 `ready` 时出现
+        errorCode:
+          type: string
+          description: 失败或过期原因；worker 错误码或 `FILE_EXPIRED`
+          enum:
+            - CONTENT_OVERFLOW
+            - INVALID_SNAPSHOT
+            - TEMPLATE_VERSION_UNSUPPORTED
+            - RENDERER_VERSION_UNSUPPORTED
+            - MEASURE_FAILED
+            - BROWSER_UNAVAILABLE
+            - RENDER_TIMEOUT
+            - RENDER_FAILED
+            - FILE_EXPIRED
+        errorMessage:
+          type: string
+          description: 可展示的错误原因
+        expiresAt:
+          type: string
+          format: date-time
+          description: 下载有效期；`ready` 后约 10 分钟
+        createdAt:
+          type: string
+          format: date-time
+
+    ImportStatus:
+      type: string
+      enum: [processing, ready, failed, confirmed, cancelled, expired]
+      description: |
+        `processing` 解析中；`ready` 草稿可用；`failed` 解析失败可重试；
+        `confirmed` 已创建简历；`cancelled` 已放弃；`expired` 已过期。
+
+    ImportDraft:
+      type: object
+      required: [title, document, appearance]
+      properties:
+        title:
+          type: string
+          maxLength: 100
+        document:
+          $ref: "#/components/schemas/ResumeDocument"
+        appearance:
+          $ref: "#/components/schemas/ResumeAppearance"
+
+    ImportJob:
+      type: object
+      required: [id, filename, status, version, expiresAt]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-f0-9]{32}$"
+        filename:
+          type: string
+          description: 上传时的原始文件名
+        status:
+          $ref: "#/components/schemas/ImportStatus"
+        sourceText:
+          type: string
+          description: 从文件提取的纯文本；确认 / 放弃 / 过期后省略
+        draft:
+          $ref: "#/components/schemas/ImportDraft"
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 草稿乐观锁版本；保存 / 确认 / 重试需匹配
+        errorCode:
+          type: string
+          description: |
+            `failed` 时的错误码，如 `SCANNED_PDF`、`UNSUPPORTED_FORMAT`、`PARSE_TIMEOUT`、
+            `PARSE_INTERRUPTED`、`IMPORT_BUSY`
+        message:
+          type: string
+          description: 可展示的说明。注意：`ready` 时该字段可能是解析警告，不是错误
+        resumeId:
+          type: string
+          pattern: "^[a-f0-9]{32}$"
+          description: 确认后创建的简历 ID
+        expiresAt:
+          type: string
+          format: date-time
+          description: 任务有效期（上传后 24 小时）
+
+    ImportSaveRequest:
+      type: object
+      required: [version, draft]
+      properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        draft:
+          $ref: "#/components/schemas/ImportDraft"
+
+    ImportConfirmRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+
+    AiRewriteAction:
+      type: string
+      enum: [polish, condense]
+      description: "`polish` 润色；`condense` 精炼"
+
+    AiRewriteRequest:
+      type: object
+      required: [requestId, action, text, privacyConsent]
+      properties:
+        requestId:
+          type: string
+          pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          description: 一次逻辑操作的 UUID；24 小时内同 ID 同输入重放返回缓存
+        action:
+          $ref: "#/components/schemas/AiRewriteAction"
+        text:
+          type: string
+          minLength: 1
+          maxLength: 6000
+          description: 纯文本，保留换行；不接受 HTML 与除换行/回车/Tab 外的控制字符
+        section:
+          type: string
+          pattern: "^[a-z][a-z0-9_-]{0,31}$"
+          description: 模块标识，如 work / project / skills / evaluation；不是提示词
+        targetRole:
+          type: string
+          maxLength: 100
+          description: 目标岗位，可选；不填则省略
+        privacyConsent:
+          type: boolean
+          const: true
+          description: 必须为 true，表示用户同意发送所选正文给 DeepSeek
+
+    AiRewriteResponse:
+      type: object
+      required: [requestId, action, originalText, rewrittenText, warnings]
+      properties:
+        requestId:
+          type: string
+          description: 与请求一致的 UUID
+        action:
+          $ref: "#/components/schemas/AiRewriteAction"
+        originalText:
+          type: string
+          description: 请求提交的原文
+        rewrittenText:
+          type: string
+          description: 模型建议；前端按纯文本展示，采用前需用户确认
+        warnings:
+          type: array
+          items:
+            type: string
+          description: 可展示的中文提示（非程序错误），如事实核对提醒
