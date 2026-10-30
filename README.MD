@@ -223,6 +223,8 @@ npm run dev
 
 使用本机 Chrome 时，在根 `.env` 设置 `RESUME_DO_BROWSER_CHANNEL=chrome` 后执行 `npm run dev`。不要同时再运行单独的 Web / worker 命令，否则会重复启动。以下分进程步骤仍可用于分别调试。
 
+未指定浏览器时默认使用 Playwright Chromium；macOS 上若其可执行文件缺失，worker 会尝试使用 `/Applications` 下已安装的 Google Chrome，并打印切换日志。显式设置的浏览器不会自动切换。浏览器不可用时返回 `BROWSER_UNAVAILABLE` 和具体操作提示，完整异常仅写入 worker 终端；安装浏览器或修正配置后重新发起导出。
+
 ### 7.1 Java API：终端一
 
 先按第 6 节在项目根目录加载环境变量并设置绝对数据路径，然后执行：

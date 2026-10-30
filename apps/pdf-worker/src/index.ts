@@ -14,6 +14,7 @@ const DETERMINISTIC_FAILURES = new Set([
   'TEMPLATE_VERSION_UNSUPPORTED',
   'RENDERER_VERSION_UNSUPPORTED',
   'MEASURE_FAILED',
+  'BROWSER_UNAVAILABLE',
 ]);
 
 function sleep(ms: number): Promise<void> {
@@ -83,6 +84,8 @@ async function processJob(job: JobRow): Promise<void> {
       code,
       attempts: job.attempts,
       durationMs: Date.now() - startedAt,
+      // Keep runtime diagnostics in the local worker log, never the API response.
+      error,
     });
   } finally {
     clearInterval(timer);
@@ -102,6 +105,7 @@ async function main(): Promise<void> {
     workerId: config.workerId,
     database: `${config.db.host}:${config.db.port}/${config.db.database}`,
     storageDir: config.storageDir,
+    browserChannel: config.browserChannel || 'Playwright Chromium (macOS: Chrome fallback if missing)',
   });
 
   let nextCleanupAt = 0;

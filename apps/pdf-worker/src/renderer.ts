@@ -1,4 +1,5 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { existsSync } from 'node:fs';
 import { config } from './config';
 import { appearanceSchema, resumeDocumentSchema } from '@resume-do/schema';
 import {
@@ -19,8 +20,9 @@ export class RenderError extends Error {
   constructor(
     public readonly code: string,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -64,10 +66,30 @@ export class PdfRenderer {
 
   private async ensureBrowser(): Promise<Browser> {
     if (this.browser?.isConnected()) return this.browser;
-    this.browser = await chromium.launch({
-      args: ['--disable-dev-shm-usage'],
-      channel: config.browserChannel || undefined,
+    const launch = (channel?: string) => chromium.launch({
+      args: ['--disable-dev-shm-usage'], channel,
     });
+    try {
+      this.browser = await launch(config.browserChannel || undefined);
+    } catch (error) {
+      const missingExecutable = error instanceof Error && error.message.includes("Executable doesn't exist");
+      // A fresh npm install does not install Playwright's browser. On macOS,
+      // use an existing standard Chrome installation only for that exact case.
+      // Never override an explicit channel or retry permission/crash failures.
+      if (!config.browserChannel && missingExecutable && process.platform === 'darwin'
+          && existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')) {
+        console.warn('Playwright Chromium missing; using installed Google Chrome');
+        try {
+          this.browser = await launch('chrome');
+        } catch (chromeError) {
+          throw new RenderError('BROWSER_UNAVAILABLE', 'PDF 浏览器启动失败，请查看 worker 日志并检查本机 Chrome', { cause: chromeError });
+        }
+      } else {
+        throw new RenderError('BROWSER_UNAVAILABLE', missingExecutable
+          ? 'PDF 浏览器未安装，请安装 Playwright Chromium，或设置 RESUME_DO_BROWSER_CHANNEL=chrome 后重启 worker'
+          : 'PDF 浏览器启动失败，请查看 worker 日志检查浏览器配置', { cause: error });
+      }
+    }
     return this.browser;
   }
 
