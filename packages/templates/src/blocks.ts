@@ -13,7 +13,18 @@ function formatMonth(month: string): string {
   return month ? month.replace('-', '.') : '';
 }
 
-function formatRange(item: ResumeRecordItem): string {
+// The original resumes space out two-character labels (年　　龄) to line up with four-character ones.
+function spacedLabel(label: string): string {
+  return label.length === 2 ? `${label[0]}\u3000\u3000${label[1]}` : label;
+}
+
+function formatRange(item: ResumeRecordItem, iso: boolean): string {
+  if (iso) {
+    const start = item.startMonth;
+    const end = item.ongoing ? '至今' : item.endMonth;
+    if (start && end) return `${start} ~ ${end}`;
+    return start || end;
+  }
   const start = formatMonth(item.startMonth);
   const end = item.ongoing ? '至今' : formatMonth(item.endMonth);
   if (start && end) return `${start} — ${end}`;
@@ -24,18 +35,70 @@ function headerBlock(input: RenderInput): ResumeBlock {
   const { document, appearance } = input;
   const basic = document.basic;
   const intent = document.intent;
-  const intentLine = [intent.role, intent.city, intent.salary, intent.arrival]
-    .filter(Boolean)
-    .join(' · ');
-  const metaKeys: ContactIcon[] = ['gender', 'city', 'experienceYears', 'phone', 'email'];
-  const metaItems = metaKeys.filter(key => basic[key]).map(key => ({ key, value: basic[key] }));
   const spec = getTemplateSpec(appearance.templateId);
+  const classic = spec.header === 'classic';
+  const intentLine = classic
+    ? intent.role || intent.city
+      ? `求职意向：${[intent.role, intent.city, intent.salary, intent.arrival].filter(Boolean).join('｜')}`
+      : ''
+    : [intent.role, intent.city, intent.salary, intent.arrival].filter(Boolean).join(' · ');
+  const metaKeys: ContactIcon[] = ['gender', 'city', 'experienceYears', 'phone', 'email'];
+  const metaItems = metaKeys.flatMap(key => {
+    const value = basic[key];
+    return value ? [{ key, value }] : [];
+  });
   const showPhoto = spec.photo !== false && basic.showPhoto !== false;
   const name = basic.name || '你的姓名';
   const initial = Array.from(name)[0] ?? '简';
   const photo = basic.photo
     ? `<img src="${escapeHtml(basic.photo)}" alt="${escapeHtml(name)}" />`
     : `<span class="r-initial">${escapeHtml(initial)}</span>`;
+
+  if (classic) {
+    const rows = ([
+      { icon: 'age', label: '年龄', value: basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age },
+      { icon: 'gender', label: '性别', value: basic.gender },
+      { icon: 'nativePlace', label: '籍贯', value: basic.nativePlace },
+      { icon: 'experienceYears', label: '工作年限', value: basic.experienceYears },
+      { icon: 'phone', label: '电话', value: basic.phone },
+      { icon: 'email', label: '邮箱', value: basic.email },
+      { icon: 'city', label: '城市', value: basic.city },
+      { label: '出生年月', value: basic.birthMonth },
+      { label: '民族', value: basic.ethnicity },
+      { label: '婚姻状况', value: basic.maritalStatus },
+      { label: '政治面貌', value: basic.politicalStatus },
+      { label: '身高', value: basic.height },
+      { label: '体重', value: basic.weight },
+      ...(basic.customFields ?? []),
+    ] as { icon?: ContactIcon; label: string; value?: string }[]).filter(
+      (row): row is { icon?: ContactIcon; label: string; value: string } => Boolean(row.value),
+    );
+    const grid = rows.length
+      ? `<div class="r-meta r-meta-grid">${rows
+          .map(
+            ({ icon, label, value }) =>
+              `<span class="r-contact">${icon ? contactIcon(icon) : ''}<em>${escapeHtml(spacedLabel(label))}</em><span>${escapeHtml(value)}</span></span>`,
+          )
+          .join('')}</div>`
+      : '';
+    const html = [
+      '<div class="r-intro">',
+      showPhoto ? `<div class="r-intro-photo">${photo}</div>` : '',
+      '<div class="r-intro-main">',
+      `<h1>${escapeHtml(name)}</h1>`,
+      intentLine ? `<p class="r-intent">${escapeHtml(intentLine)}</p>` : '',
+      grid,
+      '</div>',
+      '</div>',
+    ].join('');
+    return {
+      id: 'header',
+      kind: 'header',
+      keepWithNext: false,
+      html,
+      plainText: [name, intentLine, ...rows.map(row => `${row.label}${row.value}`)].filter(Boolean).join(' '),
+    };
+  }
 
   const extras: [string, string | undefined][] = [
     ['出生年月', basic.birthMonth], ['年龄', basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age],
@@ -76,7 +139,7 @@ function stampSection(blocks: ResumeBlock[], sectionId: string): ResumeBlock[] {
   return blocks;
 }
 
-function sectionBlocks(section: ResumeSection, sectionIndex: number): ResumeBlock[] {
+function sectionBlocks(section: ResumeSection, sectionIndex: number, spec: ReturnType<typeof getTemplateSpec>): ResumeBlock[] {
   if (!section.visible) return [];
 
   const prefix = `s${sectionIndex}`;
@@ -115,7 +178,7 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number): ResumeBloc
   });
 
   records.forEach((item, recordIndex) => {
-    const range = formatRange(item);
+    const range = formatRange(item, Boolean(spec.isoDates));
     const bodyBlocks = richBlocks(item.body, `${prefix}-r${recordIndex}`);
     const hasFollowing = Boolean(item.role.trim() || bodyBlocks.length);
 
@@ -123,16 +186,24 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number): ResumeBloc
       id: `${prefix}-r${recordIndex}-head`,
       kind: 'record-head',
       keepWithNext: hasFollowing,
-      html: [
-        '<div class="r-record">',
-        `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
-        range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '',
-        '</div>',
-      ].join(''),
-      plainText: `${item.title} ${range}`.trim(),
+      html: spec.recordInline
+        ? [
+            '<div class="r-record r-record-inline">',
+            range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '<span></span>',
+            `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
+            item.role.trim() ? `<span class="r-record-role">${escapeHtml(item.role)}</span>` : '<span></span>',
+            '</div>',
+          ].join('')
+        : [
+            '<div class="r-record">',
+            `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
+            range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '',
+            '</div>',
+          ].join(''),
+      plainText: `${item.title} ${item.role} ${range}`.trim(),
     });
 
-    if (item.role.trim()) {
+    if (!spec.recordInline && item.role.trim()) {
       blocks.push({
         id: `${prefix}-r${recordIndex}-role`,
         kind: 'role',
@@ -149,9 +220,10 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number): ResumeBloc
 }
 
 export function buildBlocks(input: RenderInput): ResumeBlock[] {
+  const spec = getTemplateSpec(input.appearance.templateId);
   const blocks: ResumeBlock[] = [headerBlock(input)];
   input.document.sections.forEach((section, index) => {
-    blocks.push(...sectionBlocks(section, index));
+    blocks.push(...sectionBlocks(section, index, spec));
   });
   return blocks;
 }

@@ -64,11 +64,40 @@ export function richBlocks(html: string, prefix: string): ResumeBlock[] {
   const blocks: ResumeBlock[] = [];
   let index = 0;
 
+  const pushBullet = (inner: string, mark: string) => {
+    blocks.push(
+      makeBlock(
+        `${prefix}-li${index++}`,
+        'bullet',
+        `<div class="r-bullet"><span class="r-mark">${escapeHtml(mark)}</span>${inner}</div>`,
+      ),
+    );
+  };
+
   const pushParagraph = (inner: string) => {
     if (!textOfHtml(inner)) return;
     blocks.push(
       makeBlock(`${prefix}-p${index++}`, 'paragraph', `<p class="r-paragraph">${inner}</p>`),
     );
+  };
+
+  // Imported documents keep list markers as text; render them as hanging bullets.
+  const BULLET_PREFIX = /^(?:([·•▪◦●○])\s*|([-*])\s+|(\d{1,2})[.、)）]\s*)/;
+  const pushElement = (node: Element) => {
+    const leading = node.children.find(child => child.type === 'text');
+    if (leading && leading.type === 'text') {
+      const match = leading.data.match(BULLET_PREFIX);
+      if (match) {
+        // PDF text layers often expose the bullet as a middle dot; render the filled bullet the original shows.
+        const mark = match[3] ? `${match[3]}.` : match[1] ? '•' : match[2];
+        leading.data = leading.data.slice(match[0].length);
+        if (textOfHtml(DomUtils.getInnerHTML(node))) {
+          pushBullet(DomUtils.getInnerHTML(node), mark);
+          return;
+        }
+      }
+    }
+    pushParagraph(DomUtils.getInnerHTML(node));
   };
 
   const pushList = (node: Element, ordered: boolean) => {
@@ -97,11 +126,11 @@ export function richBlocks(html: string, prefix: string): ResumeBlock[] {
     }
     if (!isElement(node)) continue;
     if (node.name === 'p') {
-      pushParagraph(DomUtils.getInnerHTML(node));
+      pushElement(node);
     } else if (node.name === 'ul' || node.name === 'ol') {
       pushList(node, node.name === 'ol');
     } else {
-      pushParagraph(DomUtils.getInnerHTML(node));
+      pushElement(node);
     }
   }
 

@@ -17,9 +17,10 @@ public class EditableImportService {
     private final ImportParser parser;
     private final ImportMapper mapper;
     private final ImportPhotoExtractor photos;
+    private final ImportStyleDetector styles;
     private final OriginalResumeService originals;
-    public EditableImportService(ImportParser parser, ImportMapper mapper, ImportPhotoExtractor photos, OriginalResumeService originals, ResumeRepository repository, ResumeValidator validator, ResumeService resumes) {
-        this.repository=repository; this.validator=validator; this.resumes=resumes; this.parser=parser; this.mapper=mapper; this.photos=photos; this.originals=originals;
+    public EditableImportService(ImportParser parser, ImportMapper mapper, ImportPhotoExtractor photos, ImportStyleDetector styles, OriginalResumeService originals, ResumeRepository repository, ResumeValidator validator, ResumeService resumes) {
+        this.repository=repository; this.validator=validator; this.resumes=resumes; this.parser=parser; this.mapper=mapper; this.photos=photos; this.styles=styles; this.originals=originals;
     }
     public ResumeDtos.ResumeResponse create(long owner, MultipartFile file) {
         String filename=OriginalResumeService.cleanFilename(file.getOriginalFilename());
@@ -27,7 +28,7 @@ public class EditableImportService {
         if(!capacity.tryAcquire()) throw new com.resumedo.common.ApiException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,"IMPORT_BUSY","解析服务繁忙，请稍后重试",java.util.Map.of());
         try { return originals.createEditable(owner,file,path -> {
             var parsed=parser.parse(path,extension);
-            var draft=mapper.draft(parsed.text(),filename);
+            var draft=mapper.draft(parsed.text(),filename,styles.accent(path,extension));
             ((ObjectNode)draft.path("document")).put("importWarning",parsed.warning());
             ((ObjectNode)draft.path("document").path("basic")).put("photo",photos.extract(path,extension));
             return draft;
@@ -43,7 +44,7 @@ public class EditableImportService {
             var source=originals.source(owner,id,false);
             String extension=parser.extension(row.sourceFilename());
             var parsed=parser.parse(source.path(),extension);
-            var draft=mapper.draft(parsed.text(),row.sourceFilename());
+            var draft=mapper.draft(parsed.text(),row.sourceFilename(),styles.accent(source.path(),extension));
             ((ObjectNode)draft.path("document")).put("importWarning",parsed.warning());
             ((ObjectNode)draft.path("document").path("basic")).put("photo",photos.extract(source.path(),extension));
             var content=validator.validate(draft.path("document"),draft.path("appearance"));

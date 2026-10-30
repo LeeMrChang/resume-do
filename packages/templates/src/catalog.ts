@@ -11,6 +11,7 @@ export type TemplateHeaderStyle =
   | 'band-light'
   | 'block'
   | 'art'
+  | 'classic'
   | 'side';
 
 export type TemplateSectionStyle =
@@ -23,9 +24,11 @@ export type TemplateSectionStyle =
   | 'icon'
   | 'pill'
   | 'dots'
-  | 'timeline';
+  | 'timeline'
+  | 'classic';
 
 export type TemplateGroup =
+  | '原样还原'
   | '极简黑白'
   | '蓝色商务'
   | '深色横幅'
@@ -52,6 +55,12 @@ export interface TemplateSpec {
   sidebarInk?: string;
   sidebarWidthMm?: number;
   asideSections?: string[];
+  /** Time, organisation and role share one row instead of stacking the role. */
+  recordInline?: boolean;
+  /** The imported reference page has no page numbers, so no footer space is reserved. */
+  showFooter?: boolean;
+  /** Reference files print `2024-03 ~ 2026-03`; catalogue skins keep the dotted style. */
+  isoDates?: boolean;
 }
 
 function make(
@@ -87,6 +96,11 @@ const SIDEBAR_ASIDE = ['skills', 'honor', 'hobby'];
 const SPLIT_ASIDE = ['education', 'skills', 'honor', 'hobby'];
 
 export const TEMPLATE_CATALOG: TemplateSpec[] = [
+  make('imported', '原样还原', '原样还原', 'single', 'classic', 'classic', '#67a886', '#a8d3b9', '#eef6f1', '#22303a', {
+    recordInline: true,
+    showFooter: false,
+    isoDates: true,
+  }),
   make('1045', '极简蓝线', '极简黑白', 'single', 'photo-right', 'rule', '#1f5aa6', '#7f9dc4', '#f2f5f9', '#1f2a37'),
   make('1015', '深海侧栏', '侧栏双栏', 'sidebar', 'side', 'rule', '#3aa39a', '#7fcac3', '#e8f5f3', '#22303a', {
     sidebarTone: 'dark',
@@ -193,6 +207,7 @@ export function getTemplateSpec(templateId: string): TemplateSpec {
 }
 
 export const TEMPLATE_GROUPS: TemplateGroup[] = [
+  '原样还原',
   '极简黑白',
   '蓝色商务',
   '深色横幅',

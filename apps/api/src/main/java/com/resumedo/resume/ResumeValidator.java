@@ -25,7 +25,7 @@ public class ResumeValidator {
             "1032", "1042", "1014", "1027", "1003", "1053", "1037", "1048",
             "1025", "1021", "1036", "1006", "1007", "1029", "1049", "1031",
             "1013", "1024", "1028", "1001", "1018", "1052", "1026", "1009",
-            "1000", "1010", "1017", "clean", "classic", "elegant", "sidebar");
+            "1000", "1010", "1017", "clean", "classic", "elegant", "sidebar", "imported");
     private static final Pattern PHOTO = Pattern.compile("^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$");
     private static final Safelist SAFELIST = Safelist.none()
             .addTags("p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li", "a")

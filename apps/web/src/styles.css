@@ -1077,6 +1077,8 @@ button.dot:hover:not(:disabled) {
 .photo-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .photo-actions input { width: auto; max-width: 100%; }
 .photo-preview { width: 52px; height: 64px; object-fit: cover; border-radius: 5px; }
+.photo-toggle { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.photo-toggle input { margin: 0; }
 .dialog-wide footer { position: sticky; bottom: -27px; z-index: 3; background: #fff; padding: 16px 0; border-top: 1px solid var(--line); }
 .template-thumbnail .r-page { break-after: auto; }
 

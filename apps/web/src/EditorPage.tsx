@@ -94,7 +94,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
 
   const [selected, setSelected] = useState('basic');
   const [itemIndex, setItemIndex] = useState(0);
-  const [zoom, setZoom] = useState(0.72);
+  const [zoom, setZoom] = useState(1);
   const [collapsed, setCollapsed] = useState(false);
   const [pageCount, setPageCount] = useState(1);
 
@@ -874,7 +874,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
               </li>
               <li>
                 <b>03 调整版式</b>
-                修改字体、颜色与间距，从 59 套模板中选择适合的版式。
+                修改字体、颜色与间距，从 60 套模板中选择适合的版式。
               </li>
               <li>
                 <b>04 导出 PDF</b>
@@ -1031,7 +1031,6 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
               {selected === 'basic' && (
                 <div className="field-grid">
                   <div className="photo-field">
-                    <label><input type="checkbox" checked={doc.basic.showPhoto !== false} onChange={event => updateDocument(draft => { draft.basic.showPhoto = event.target.checked; })} /> 展示照片（关闭后预览和编辑版导出均隐藏，保留照片数据）</label>
                     <label htmlFor="resume-photo">简历照片（可选）</label>
                     <div className="photo-actions">
                       {doc.basic.photo && <img className="photo-preview" src={doc.basic.photo} alt="简历照片" />}
@@ -1041,8 +1040,12 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                           event.target.value = '';
                         }} />
                       {doc.basic.photo && <button type="button" onClick={() => updateDocument(draft => { draft.basic.photo = ''; })}>移除照片</button>}
+                      <label className="photo-toggle">
+                        <input type="checkbox" checked={doc.basic.showPhoto !== false} onChange={event => updateDocument(draft => { draft.basic.showPhoto = event.target.checked; })} />
+                        展示照片
+                      </label>
                     </div>
-                    <p className="note">PNG、JPEG 或 WebP，288KB 以内；未上传时模板显示姓名首字。导入 PDF / DOCX 请使用顶部“导入简历”。</p>
+                    <p className="note">PNG、JPEG 或 WebP，288KB 以内；未上传时模板显示姓名首字。导入 PDF / DOCX 请使用顶部“导入简历”。关闭“展示照片”后预览与编辑版导出均隐藏，照片数据保留。</p>
                   </div>
                   <Field
                     label="姓名"

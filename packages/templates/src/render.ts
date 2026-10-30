@@ -15,15 +15,16 @@ export function getPageMetrics(appearance: ResumeAppearance): PageMetrics {
   const marginPx = appearance.pageMargin;
   const layout = getTemplateLayout(appearance.templateId);
   const hasAside = layout.hasAside;
+  const footerReservePx = getTemplateSpec(appearance.templateId).showFooter === false ? 0 : FOOTER_RESERVE_PX;
   return {
     pageWidthPx: PAGE_WIDTH_PX,
     pageHeightPx: PAGE_HEIGHT_PX,
     contentWidthPx: hasAside
       ? PAGE_WIDTH_PX - layout.sidebarWidthPx - layout.mainGapPx - marginPx
       : PAGE_WIDTH_PX - marginPx * 2,
-    contentHeightPx: PAGE_HEIGHT_PX - (hasAside ? marginPx : marginPx * 2) - FOOTER_RESERVE_PX,
+    contentHeightPx: PAGE_HEIGHT_PX - (hasAside ? marginPx : marginPx * 2) - footerReservePx,
     marginPx,
-    footerReservePx: FOOTER_RESERVE_PX,
+    footerReservePx,
     asideWidthPx: layout.sidebarWidthPx,
     asideContentWidthPx: Math.max(0, layout.sidebarWidthPx - SIDEBAR_PADDING_PX * 2 - (layout.kind === 'split' ? 1 : 0)),
     asideContentHeightPx: hasAside ? PAGE_HEIGHT_PX - marginPx * 2 : 0,
@@ -128,10 +129,11 @@ export function renderPagesFragment(
   const classes = `r-page ${styleClass(input.appearance)}`;
   const total = Math.max(1, pages.length);
   const metrics = getPageMetrics(input.appearance);
+  const showFooter = getTemplateSpec(input.appearance.templateId).showFooter !== false;
   return pages
     .map((blocks, index) => {
       const content = blocks.map(renderBlockHtml).join('');
-      const footer = `<div class="r-footer">${index + 1} / ${total}</div>`;
+      const footer = showFooter ? `<div class="r-footer">${index + 1} / ${total}</div>` : '';
       if (metrics.hasAside) {
         const aside = asideBlocks.map(renderBlockHtml).join('');
         return [

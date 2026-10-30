@@ -345,6 +345,105 @@ export const RESUME_CSS = `
   overflow: visible;
 }
 
+/* 原样还原：贴靠导入原件的紧凑版式，主题色由导入检测写入 */
+.hdr-classic .r-intro {
+  align-items: flex-start;
+  gap: 60px;
+  padding: 0 0 4px;
+  border: 0;
+}
+.hdr-classic .r-intro-photo {
+  order: 0;
+  width: 122px;
+  height: 145px;
+  border-radius: 0;
+}
+.hdr-classic .r-intro h1 {
+  margin: 0 0 10px;
+  color: var(--r-accent);
+  font-size: 1.75em;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+}
+.hdr-classic .r-intro .r-intent {
+  margin: 0 0 12px;
+  color: #333;
+  font-weight: 700;
+  font-size: 0.86em;
+}
+.hdr-classic .r-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 3px 24px;
+  margin-top: 0;
+  color: #333;
+  font-size: 0.86em;
+  line-height: 1.9;
+}
+.hdr-classic .r-meta-grid .r-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.hdr-classic .r-meta-grid em {
+  font-style: normal;
+}
+.hdr-classic .r-meta-grid em::after {
+  content: '：';
+}
+
+.sec-classic .r-section-title {
+  margin: 0 0 2px;
+  padding: 3px 13px;
+  color: var(--r-accent);
+  background: var(--r-tint);
+  border-left: 4px solid var(--r-accent);
+  border-radius: 0;
+  font-size: 1em;
+  font-weight: 700;
+}
+.tpl-imported .r-content > .r-block.r-section:first-child { padding-top: 0; }
+
+.tpl-imported .r-record {
+  align-items: baseline;
+  padding-top: 9px;
+}
+.tpl-imported .r-record-inline {
+  display: grid;
+  grid-template-columns: 34% minmax(0, 1fr) auto;
+  gap: 12px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+.tpl-imported .r-record-inline .r-record-date {
+  color: #333;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tpl-imported .r-record-inline .r-record-title {
+  min-width: 0;
+}
+.tpl-imported .r-record-inline .r-record-role {
+  text-align: right;
+  white-space: nowrap;
+}
+.tpl-imported .r-paragraph,
+.tpl-imported .r-bullet {
+  color: #333;
+  padding-bottom: 0;
+  text-align: justify;
+}
+.tpl-imported .r-paragraph {
+  padding-left: 0;
+}
+.tpl-imported .r-bullet {
+  padding-left: 18px;
+}
+.tpl-imported .r-bullet .r-mark {
+  left: 6px;
+  color: #333;
+}
+
 .font-sans {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", sans-serif;

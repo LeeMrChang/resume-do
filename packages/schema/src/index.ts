@@ -76,7 +76,10 @@ export const TEMPLATE_IDS = [
 
 export const LEGACY_TEMPLATE_IDS = ['clean', 'classic', 'elegant', 'sidebar'] as const;
 
-export const ALL_TEMPLATE_IDS = [...TEMPLATE_IDS, ...LEGACY_TEMPLATE_IDS] as const;
+/** Not part of the 59 reference skins: compact layout that mirrors an imported file. */
+export const IMPORTED_TEMPLATE_ID = 'imported' as const;
+
+export const ALL_TEMPLATE_IDS = [...TEMPLATE_IDS, IMPORTED_TEMPLATE_ID, ...LEGACY_TEMPLATE_IDS] as const;
 
 export type TemplateId = (typeof ALL_TEMPLATE_IDS)[number];
 

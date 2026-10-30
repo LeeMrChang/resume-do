@@ -223,7 +223,7 @@ export function AppearanceDialog({
                   onClick={() => setGroup(item)}>{item}</button>
               ))}
             </div>
-            <p className="note" role="status">共 59 套模板，当前显示 {filtered.length} 套。点击卡片预览，应用后保存。</p>
+            <p className="note" role="status">共 60 套模板，当前显示 {filtered.length} 套。点击卡片预览，应用后保存。</p>
           </div>
           <div className="template-grid">
             {filtered.map(spec => (

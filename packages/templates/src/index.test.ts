@@ -50,6 +50,15 @@ test('turns lists into bullet blocks', () => {
   assert.ok(blocks[0].html.includes('r-mark'));
 });
 
+test('turns text bullets from imported documents into bullet blocks', () => {
+  const blocks = richBlocks('<p>· 负责模块A</p><p>普通段落</p>', 'x');
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].kind, 'bullet');
+  assert.ok(blocks[0].html.includes('r-mark'));
+  assert.ok(blocks[0].html.includes('•'));
+  assert.equal(blocks[1].kind, 'paragraph');
+});
+
 test('moves a keep-with-next heading off the page bottom', () => {
   const blocks = [block('header'), block('heading', true), block('first'), block('second')];
   const result = paginateBlocks(blocks, [100, 50, 20, 20], 120);
@@ -110,10 +119,58 @@ test('sidebar pages render the aside once per page with footers', () => {
 });
 
 
-test('catalog covers all 59 reference IDs and legacy IDs resolve', () => {
-  assert.equal(TEMPLATE_CATALOG.length, 59);
-  assert.equal(new Set(TEMPLATE_CATALOG.map(spec => spec.id)).size, 59);
-  assert.deepEqual([...TEMPLATE_CATALOG.map(spec => spec.id)].sort(), [...TEMPLATE_IDS].sort());
+test('imported template mirrors source layout: labelled meta grid, inline record row, no footer', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.basic.age = '31岁';
+  document.basic.gender = '男';
+  document.basic.nativePlace = '广东揭阳';
+  document.basic.experienceYears = '7年经验';
+  document.basic.phone = '13695138043';
+  document.basic.email = '840591418@qq.com';
+  document.basic.showPhoto = false;
+  const work = document.sections.find(section => section.id === 'work')!;
+  work.items = [
+    { id: 'w1', title: '某公司', role: 'Java工程师', startMonth: '2024-03', endMonth: '2026-03', ongoing: false, body: '<p>职责</p>' },
+  ];
+  const appearance = {
+    ...SAMPLE_APPEARANCE,
+    templateId: 'imported' as const,
+    themeColor: '#67a886',
+    fontSize: 14,
+    lineHeight: 2,
+    sectionGap: 20,
+    pageMargin: 32,
+  };
+  const blocks = buildBlocks({ document, appearance });
+  const header = blocks[0];
+  assert.match(header.html, /r-meta-grid/);
+  const flatHeader = header.html.replace(/\u3000/g, '');
+  for (const label of ['年龄', '性别', '籍贯', '工作年限', '电话', '邮箱']) {
+    assert.ok(flatHeader.includes(label), `meta grid missing ${label}`);
+  }
+  assert.ok(header.html.includes('广东揭阳'));
+  const head = blocks.find(item => item.kind === 'record-head' && item.sectionId === 'work')!;
+  assert.ok(head.html.includes('某公司'));
+  assert.ok(head.html.includes('Java工程师'));
+  assert.ok(head.html.includes('2024-03 ~ 2026-03'));
+  assert.ok(!blocks.some(item => item.kind === 'role' && item.sectionId === 'work'));
+
+  const html = renderPagesFragment({ document, appearance }, [blocks]);
+  assert.ok(html.includes('hdr-classic'));
+  assert.ok(html.includes('sec-classic'));
+  assert.ok(html.includes('tpl-imported'));
+  assert.ok(!html.includes('class="r-footer"'));
+  assert.equal(getPageMetrics(appearance).footerReservePx, 0);
+});
+
+test('catalog covers all 59 reference IDs plus the imported template, and legacy IDs resolve', () => {
+  assert.equal(TEMPLATE_IDS.length, 59);
+  assert.equal(TEMPLATE_CATALOG.length, 60);
+  assert.equal(new Set(TEMPLATE_CATALOG.map(spec => spec.id)).size, 60);
+  assert.deepEqual(
+    [...TEMPLATE_CATALOG.map(spec => spec.id)].sort(),
+    [...TEMPLATE_IDS, 'imported'].sort(),
+  );
   for (const id of ALL_TEMPLATE_IDS) {
     const spec = getTemplateSpec(id);
     const input = { document: SAMPLE_DOCUMENT, appearance: { ...SAMPLE_APPEARANCE, templateId: id } };
@@ -138,9 +195,9 @@ test('empty body and trailing keep flag do not add nonexistent indexes', () => {
 });
 
 
-test('all 59 skins have distinct visual configuration, not duplicate IDs only', () => {
+test('all catalog skins have distinct visual configuration, not duplicate IDs only', () => {
   const styles = TEMPLATE_CATALOG.map(({ id, referenceId, name, group, ...style }) => JSON.stringify(style));
-  assert.equal(new Set(styles).size, 59);
+  assert.equal(new Set(styles).size, TEMPLATE_CATALOG.length);
 });
 
 
