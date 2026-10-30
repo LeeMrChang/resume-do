@@ -142,3 +142,7 @@ bash current/scripts/backup-cloud.sh /home/ubuntu/resume-do
 传输修正验证：公共 npm 源修复后的 GitHub 第 2 轮检查、浏览器/PDF、API/Flyway/排队下载以及实际发布容器冒烟均通过。完整镜像上传过慢，尚未完成云端发布。新增源码白名单和构建失败保护后本地部署测试 11 项通过；发布包 1,884,160 字节（约 1.8 MiB）。服务器源码构建尚待实际执行，不将脚本测试视为 Docker 构建通过。
 
 第 3 轮：CI 和实际发布容器验证再次通过；干净 checkout 的源码归档实际仅 174,080 字节，SSH 上传用时 8.4 秒。服务器在 Docker 能力预检处退出，未停止应用或进入数据库操作。已修复预检必须与实际构建使用同一 `DOCKER_BUILDKIT=0` 环境的问题，新增对应失败回归后本地 12 项通过；云端重试结果待记录。
+
+Maven 加速：服务器构建显式传入 `https://mirrors.cloud.tencent.com/nexus/repository/maven-public/`，依赖和构建插件均通过镜像下载，配置只在 API 镜像构建阶段生效；GitHub runner 和普通 Docker 构建默认仍走 Maven Central。配置见 `deploy/maven-settings.xml` 与 `deploy/api.Dockerfile`，源码白名单已包含该 XML。服务器无需修改宿主机 `~/.m2/settings.xml`，不影响 cost。镜像地址依据[腾讯云官方说明](https://cloud.tencent.cn/document/product/649/20231)；是否实际走内网取决于服务器网络与 DNS，不作保证。
+
+取消 Maven 静默输出，后续构建可直接看到阶段信息。预下载依赖仍位于独立 Docker 层，成功构建后 POM、镜像和 settings 未变时可复用该层；本次未迁移 BuildKit 或加入共享宿主机缓存。已开始的构建不会热切换镜像，须由包含新配置的发布触发。验证：13 项部署检查通过；Maven 3.9.16 离线 validate 退出码 0，实际解析出的 mirror URL 确认为腾讯云 HTTPS 地址；未在本机验证国内镜像下载速度。

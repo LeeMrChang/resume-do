@@ -14,7 +14,8 @@ SOURCE_FILES = ('package.json', 'package-lock.json', 'tsconfig.base.json', '.doc
                 'apps/api/pom.xml', 'apps/web/package.json', 'apps/web/index.html',
                 'apps/web/tsconfig.json', 'apps/web/vite.config.ts', 'apps/pdf-worker/package.json',
                 'scripts/copy-pdf-assets.mjs', 'deploy/api.Dockerfile', 'deploy/web.Dockerfile',
-                'deploy/worker.Dockerfile', 'deploy/nginx.conf', 'deploy/worker-health.mjs')
+                'deploy/worker.Dockerfile', 'deploy/nginx.conf', 'deploy/worker-health.mjs',
+                'deploy/maven-settings.xml')
 SOURCE_DIRS = ('apps/api/src/main', 'apps/web/src', 'apps/web/public',
                'apps/pdf-worker/src', 'packages/schema', 'packages/templates')
 

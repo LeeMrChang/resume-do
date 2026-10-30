@@ -16,7 +16,7 @@ class CloudDeploymentTests(unittest.TestCase):
         import tarfile
         with tempfile.TemporaryDirectory() as scratch:
             base = Path(scratch)
-            for name in ['package.json', 'apps/api/pom.xml', 'apps/api/src/main/App.java',
+            for name in ['package.json', 'apps/api/pom.xml', 'deploy/maven-settings.xml', 'apps/api/src/main/App.java',
                          'apps/web/src/App.tsx', 'apps/api/.resume-do-local.yml',
                          '.env', 'data/private.pdf', 'apps/web/node_modules/private.js']:
                 target = base / name
@@ -26,8 +26,22 @@ class CloudDeploymentTests(unittest.TestCase):
             self.packager().source_archive(base, output)
             with tarfile.open(output) as archive:
                 names = set(archive.getnames())
-            self.assertEqual(names, {'package.json', 'apps/api/pom.xml',
+            self.assertEqual(names, {'package.json', 'apps/api/pom.xml', 'deploy/maven-settings.xml',
                                    'apps/api/src/main/App.java', 'apps/web/src/App.tsx'})
+
+    def test_maven_build_settings_cover_dependencies_and_plugins_without_host_changes(self):
+        import xml.etree.ElementTree as ET
+        ns = {'m': 'http://maven.apache.org/SETTINGS/1.2.0'}
+        settings = ET.parse(ROOT / 'deploy/maven-settings.xml').getroot()
+        mirror = settings.find('m:mirrors/m:mirror', ns)
+        self.assertEqual(mirror.find('m:mirrorOf', ns).text, '*')
+        self.assertEqual(mirror.find('m:url', ns).text, '${env.MAVEN_MIRROR_URL}')
+        dockerfile = (ROOT / 'deploy/api.Dockerfile').read_text()
+        commands = [line for line in dockerfile.splitlines() if line.startswith('RUN mvn ')]
+        self.assertEqual(len(commands), 2)
+        self.assertTrue(all('-s /build/maven-settings.xml' in command and '-q' not in command for command in commands))
+        build = (ROOT / 'scripts/build-cloud.sh').read_text()
+        self.assertIn('--build-arg MAVEN_MIRROR_URL=https://mirrors.cloud.tencent.com/nexus/repository/maven-public/', build)
 
     def test_locked_packages_are_downloadable_without_company_network(self):
         from urllib.parse import urlparse

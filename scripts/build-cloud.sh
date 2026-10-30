@@ -44,6 +44,7 @@ for service in api worker web; do
   [[ "$help" == *--memory* ]] || { echo 'Docker classic build memory limits unavailable'; exit 1; }
   "${builder[@]}" build --memory=1g --memory-swap=1g --cpu-period=100000 --cpu-quota=100000 \
     --build-arg MAVEN_IMAGE=mirror.ccs.tencentyun.com/library/maven:3.9-eclipse-temurin-21 \
+    --build-arg MAVEN_MIRROR_URL=https://mirrors.cloud.tencent.com/nexus/repository/maven-public/ \
     --build-arg JAVA_IMAGE=mirror.ccs.tencentyun.com/library/eclipse-temurin:21-jre \
     --build-arg NODE_IMAGE=mirror.ccs.tencentyun.com/library/node:22-bookworm-slim \
     --build-arg NGINX_IMAGE=mirror.ccs.tencentyun.com/library/nginx:1.27-alpine \
