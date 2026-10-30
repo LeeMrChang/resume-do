@@ -442,7 +442,7 @@ export function ExportDialog({
         <label><input type="radio" name="export-version" checked={version === 'original'} onChange={() => setVersion('original')} /> 原件版（默认）：原文件，不包含编辑修改</label>
         <label><input type="radio" name="export-version" checked={version === 'edited'} onChange={() => setVersion('edited')} /> 编辑版：当前内容与模板</label>
       </fieldset>}
-      {source && !hasOriginalPdf && <p className="note">Word 原件可在“查看原件”中下载；PDF 导出使用编辑版。</p>}
+      {source && !hasOriginalPdf && <p className="note">Word 原件暂不支持原件版下载，PDF 导出使用编辑版。</p>}
       <div className="status-line">
         <span>页面</span>
         <span>

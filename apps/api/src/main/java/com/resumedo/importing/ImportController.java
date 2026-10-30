@@ -26,6 +26,10 @@ public class ImportController {
     public ResumeDtos.ResumeResponse direct(@RequestParam("file") MultipartFile file, Authentication user) {
         return editable.create(owner(user),file);
     }
+    @PostMapping(value="/direct/{id}", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResumeDtos.ResumeResponse overwrite(@PathVariable String id, @RequestParam("file") MultipartFile file, Authentication user) {
+        return editable.overwrite(owner(user),id,file);
+    }
     @PostMapping("/from-original/{id}")
     public ResumeDtos.ResumeResponse openLegacyEditor(@PathVariable String id, Authentication user) {
         return editable.openLegacyEditor(owner(user),id);

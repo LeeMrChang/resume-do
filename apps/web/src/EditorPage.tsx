@@ -24,6 +24,7 @@ import {
   AppearanceDialog,
   ConflictDialog,
   ExportDialog,
+  Modal,
   RenameDialog,
   type AppearanceDialogKind,
 } from './Dialogs';
@@ -104,6 +105,8 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   const [conflict, setConflict] = useState<{ currentRevision: number; updatedAt: string } | null>(null);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [appearanceDraft, setAppearanceDraft] = useState<ResumeAppearance | null>(null);
   const [toast, setToast] = useState('');
 
@@ -134,6 +137,13 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(''), 2_600);
   }
+
+  useEffect(() => {
+    if (!actionError) return;
+    showToast(actionError);
+    setActionError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionError]);
 
   function activateResume(resume: ResumeResponse, original = false) {
     const viewOriginal = resume.kind === 'original' || (original && !!resume.source);
@@ -692,6 +702,34 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     finally { setDeleting(false); }
   }
 
+  function openExportDialog() {
+    if (!doc) return;
+    if (!doc.basic.name.trim() && !window.confirm('姓名为空，导出将使用占位姓名。是否继续？')) return;
+    setDialog({ kind: 'export' });
+  }
+
+  async function clearCurrent() {
+    if (!activeResume || clearing) return;
+    setClearing(true);
+    try {
+      if (await ensureSaved() == null) throw new Error('当前修改尚未保存，请处理保存问题后再清空');
+      if (!appearanceRef.current) throw new Error('简历数据缺失，请刷新重试');
+      const updated = await api.saveResume(activeResume.id, {
+        baseRevision: revisionRef.current,
+        clientMutationId: crypto.randomUUID(),
+        title: titleRef.current,
+        document: createDefaultDocument(),
+        appearance: appearanceRef.current,
+      });
+      activateResume(updated);
+      setConfirmClear(false);
+      showToast('已清空当前简历内容');
+    } catch (e) {
+      setConfirmClear(false);
+      showToast(e instanceof Error ? e.message : '清空失败，请重试');
+    } finally { setClearing(false); }
+  }
+
   if (bootError) {
     return (
       <div className="boot">
@@ -777,28 +815,16 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
             ⚠ 版本冲突
           </button>
         )}
-        <select aria-label="切换简历" value={activeResumeId} disabled={deleting} onChange={event => void switchResume(event.target.value)}>
-          {resumeOptions()}
-        </select>
-        {activeResume.source && <button onClick={() => void switchResume(`${activeResume.id}:original`)}>查看原件</button>}
-        <OriginalImportButton beforeUpload={async () => !deleting && await ensureSaved() != null} onCreated={originalCreated} />
-        <button type="button" disabled={deleting} onClick={() => void deleteCurrent()}>删除简历</button>
-        {actionError && <span role="alert">{actionError}</span>}
+        <OriginalImportButton beforeUpload={async () => !deleting && await ensureSaved() != null} onCreated={originalCreated} targetId={activeResumeId} />
+        <button type="button" disabled={deleting} onClick={() => setConfirmClear(true)}>清空内容</button>
         <span className="user-chip" title={user.email}>
           {user.displayName || user.email}
         </span>
+        <button type="button" className="primary" onClick={openExportDialog}>
+          ↓ 下载 PDF
+        </button>
         <button type="button" onClick={() => void logout()}>
           退出
-        </button>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => {
-            if (!doc.basic.name.trim() && !window.confirm('姓名为空，导出将使用占位姓名。是否继续？')) return;
-            setDialog({ kind: 'export' });
-          }}
-        >
-          ↓ 下载 PDF
         </button>
       </header>
 
@@ -857,6 +883,9 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
               zoom={zoom}
               onPageCount={(count) => setPageCount(count)}
             />
+            <button type="button" className="download-fab" onClick={openExportDialog}>
+              ↓ 下载 / 导出简历
+            </button>
           </main>
 
           <aside className="helper">
@@ -1303,6 +1332,21 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
       <div className={`toast ${toast ? 'show' : ''}`} role="status">
         {toast}
       </div>
+
+      {confirmClear && (
+        <Modal title="清空简历内容" onClose={() => { if (!clearing) setConfirmClear(false); }}>
+          <div className="import-warning">
+            <p className="import-warning-title">清空后，当前简历的全部内容将被移除！</p>
+            <p className="note">此操作无法撤销，建议先导出一份 PDF 备份。</p>
+          </div>
+          <footer>
+            <button type="button" disabled={clearing} onClick={() => setConfirmClear(false)}>取消</button>
+            <button type="button" className="primary" disabled={clearing} onClick={() => void clearCurrent()}>
+              {clearing ? '正在清空…' : '确认清空'}
+            </button>
+          </footer>
+        </Modal>
+      )}
 
       {dialog?.kind === 'appearance' && (
         <AppearanceDialog

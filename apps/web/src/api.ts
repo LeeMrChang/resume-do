@@ -106,6 +106,10 @@ export const api = {
     const body = new FormData(); body.append('file', file);
     return request<ResumeResponse>('/api/imports/direct', { method: 'POST', body });
   },
+  importEditableInto: (resumeId: string, file: File) => {
+    const body = new FormData(); body.append('file', file);
+    return request<ResumeResponse>(`/api/imports/direct/${resumeId}`, { method: 'POST', body });
+  },
   downloadSource: async (id: string, filename: string) => {
     const response = await fetch(`/api/resumes/${id}/source?download=1`, { credentials: 'include' });
     if (!response.ok) {

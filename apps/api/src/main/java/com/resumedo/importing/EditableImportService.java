@@ -23,16 +23,25 @@ public class EditableImportService {
         this.repository=repository; this.validator=validator; this.resumes=resumes; this.parser=parser; this.mapper=mapper; this.photos=photos; this.styles=styles; this.originals=originals;
     }
     public ResumeDtos.ResumeResponse create(long owner, MultipartFile file) {
+        return store(owner, null, file);
+    }
+    public ResumeDtos.ResumeResponse overwrite(long owner, String resumeId, MultipartFile file) {
+        return store(owner, resumeId, file);
+    }
+    private ResumeDtos.ResumeResponse store(long owner, String resumeId, MultipartFile file) {
         String filename=OriginalResumeService.cleanFilename(file.getOriginalFilename());
         String extension=parser.extension(filename);
         if(!capacity.tryAcquire()) throw new com.resumedo.common.ApiException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,"IMPORT_BUSY","解析服务繁忙，请稍后重试",java.util.Map.of());
-        try { return originals.createEditable(owner,file,path -> {
-            var parsed=parser.parse(path,extension);
-            var draft=mapper.draft(parsed.text(),filename,styles.accent(path,extension));
-            ((ObjectNode)draft.path("document")).put("importWarning",parsed.warning());
-            ((ObjectNode)draft.path("document").path("basic")).put("photo",photos.extract(path,extension));
-            return draft;
-        }); } finally { capacity.release(); }
+        try {
+            java.util.function.Function<java.nio.file.Path, JsonNode> parse = path -> {
+                var parsed=parser.parse(path,extension);
+                var draft=mapper.draft(parsed.text(),filename,styles.accent(path,extension));
+                ((ObjectNode)draft.path("document")).put("importWarning",parsed.warning());
+                ((ObjectNode)draft.path("document").path("basic")).put("photo",photos.extract(path,extension));
+                return draft;
+            };
+            return resumeId==null ? originals.createEditable(owner,file,parse) : originals.replaceEditable(owner,resumeId,file,parse);
+        } finally { capacity.release(); }
     }
     @org.springframework.transaction.annotation.Transactional
     public ResumeDtos.ResumeResponse openLegacyEditor(long owner,String id) {

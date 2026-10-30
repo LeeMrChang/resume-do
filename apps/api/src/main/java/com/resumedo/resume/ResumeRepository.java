@@ -137,6 +137,14 @@ public class ResumeRepository {
         jdbc.update("INSERT INTO resumes (public_id,owner_id,title,document,appearance,schema_version,template_id,template_version,revision,kind,source_key,source_filename,source_mime,source_bytes,source_sha256,source_pages) VALUES (?,?,?,?,?,?,?,2,0,'structured',?,?,?,?,?,?)",
             id,owner,title,document,appearance,schemaVersion,templateId,key,filename,mime,bytes,sha,pages);
     }
+    public int replaceImported(long owner, String id, String document, String appearance, int schemaVersion,
+            String templateId, String key, String filename, String mime, long bytes, String sha, Integer pages) {
+        return jdbc.update("UPDATE resumes SET document=?,appearance=?,schema_version=?,template_id=?,template_version=2,"
+                + "source_key=?,source_filename=?,source_mime=?,source_bytes=?,source_sha256=?,source_pages=?,"
+                + "revision=revision+1,updated_at=NOW(3) "
+                + "WHERE owner_id=? AND public_id=? AND kind='structured' AND deleted_at IS NULL",
+            document,appearance,schemaVersion,templateId,key,filename,mime,bytes,sha,pages,owner,id);
+    }
     public Optional<ResumeRow> findIncludingDeletedForUpdate(long owner, String id) {
         return jdbc.query("SELECT " + COLUMNS + " FROM resumes WHERE owner_id=? AND public_id=? FOR UPDATE", MAPPER,owner,id).stream().findFirst();
     }

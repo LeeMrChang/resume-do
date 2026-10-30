@@ -37,13 +37,17 @@ public class OriginalResumeService {
         } catch(IOException e) { throw new IllegalStateException("Empty resume contract missing",e); }
     }
     public ResumeDtos.ResumeResponse create(long owner, MultipartFile upload) {
-        return store(owner, upload, null);
+        return store(owner, null, upload, null);
     }
     public ResumeDtos.ResumeResponse createEditable(long owner, MultipartFile upload,
             java.util.function.Function<Path, JsonNode> parse) {
-        return store(owner, upload, parse);
+        return store(owner, null, upload, parse);
     }
-    private ResumeDtos.ResumeResponse store(long owner, MultipartFile upload,
+    public ResumeDtos.ResumeResponse replaceEditable(long owner, String id, MultipartFile upload,
+            java.util.function.Function<Path, JsonNode> parse) {
+        return store(owner, id, upload, parse);
+    }
+    private ResumeDtos.ResumeResponse store(long owner, String existingId, MultipartFile upload,
             java.util.function.Function<Path, JsonNode> parse) {
         if(upload.isEmpty()) throw ApiException.badRequest("文件不能为空");
         if(upload.getSize()>MAX_BYTES) throw ApiException.badRequest("文件不能超过 20MB");
@@ -51,7 +55,7 @@ public class OriginalResumeService {
         String extension=filename.toLowerCase(Locale.ROOT).endsWith(".docx")?"docx":"pdf";
         if(!filename.toLowerCase(Locale.ROOT).matches(".*\\.(pdf"+(parse!=null?"|docx":"")+")$"))
             throw ApiException.badRequest("原样导入目前仅支持 PDF，Word 请等待可编辑导入");
-        String id=Ids.newPublicId(), key="resumes/"+id+"."+extension;
+        String id=existingId!=null?existingId:Ids.newPublicId(), key="resumes/"+id+"."+extension;
         Path temporary=null;
         try {
             Path directory=directory();
@@ -83,19 +87,34 @@ public class OriginalResumeService {
             if(title.isBlank()) title="我的简历";
             title=truncate(title,100);
             final Path staged=temporary; final long bytes=size; final String name=title; final Integer pageCount=pages;
+            final String mime=extension.equals("pdf")?"application/pdf":"application/vnd.openxmlformats-officedocument.wordprocessingml.document";
             return transactions.execute(tx -> {
-                resumes.requireCapacity(owner);
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override public void afterCompletion(int status) {
-                        // An unknown commit outcome must not delete a potentially committed source.
-                        // Recovery only removes old files with no DB reference.
-                        if(status==STATUS_ROLLED_BACK) removeQuietly(target);
-                    }
-                });
-                if(parse==null) resumes.insertOriginal(id,owner,name,content.document().toString(),content.appearance().toString(),key,filename,bytes,hash,pageCount);
-                else resumes.insertImported(id,owner,name,content.document().toString(),content.appearance().toString(),content.schemaVersion(),content.templateId(),key,filename,
-                    extension.equals("pdf")?"application/pdf":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",bytes,hash,pageCount);
-                try { Files.move(staged,target,StandardCopyOption.ATOMIC_MOVE); }
+                if(existingId==null) {
+                    resumes.requireCapacity(owner);
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override public void afterCompletion(int status) {
+                            // An unknown commit outcome must not delete a potentially committed source.
+                            // Recovery only removes old files with no DB reference.
+                            if(status==STATUS_ROLLED_BACK) removeQuietly(target);
+                        }
+                    });
+                    if(parse==null) resumes.insertOriginal(id,owner,name,content.document().toString(),content.appearance().toString(),key,filename,bytes,hash,pageCount);
+                    else resumes.insertImported(id,owner,name,content.document().toString(),content.appearance().toString(),content.schemaVersion(),content.templateId(),key,filename,mime,bytes,hash,pageCount);
+                } else {
+                    var current=resumes.findIncludingDeletedForUpdate(owner,existingId)
+                        .filter(found -> found.deletedAt()==null)
+                        .orElseThrow(() -> ApiException.notFound("简历不存在"));
+                    if(!"structured".equals(current.kind())) throw ApiException.badRequest("只能覆盖可编辑简历");
+                    int changed=resumes.replaceImported(owner,existingId,content.document().toString(),content.appearance().toString(),
+                        content.schemaVersion(),content.templateId(),key,filename,mime,bytes,hash,pageCount);
+                    if(changed!=1) throw new IllegalStateException("覆盖简历失败，请重试");
+                    final String previousKey=current.sourceKey();
+                    if(previousKey!=null && !previousKey.equals(key))
+                        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                            @Override public void afterCommit() { removeQuietly(safeFile(previousKey)); }
+                        });
+                }
+                try { Files.move(staged,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING); }
                 catch(IOException e) { throw new IllegalStateException("原文件保存失败，请重试",e); }
                 var row=resumes.find(owner,id).orElseThrow(() -> new IllegalStateException("Original resume missing"));
                 return response(row);

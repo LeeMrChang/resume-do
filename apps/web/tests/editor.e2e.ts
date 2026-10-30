@@ -8,7 +8,7 @@ import { createDefaultDocument, createDefaultAppearance } from '@resume-do/schem
 
 // Browser regression with an isolated in-memory API. Does not touch user data.
 test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow warning', { timeout: 120_000 }, async () => {
-  const base = 'http://resume-do.test';
+  const base = 'http://localhost:4198';
   const dist = fileURLToPath(new URL('../dist/', import.meta.url));
   // Serve the production build through Playwright routing; no TCP listener needed.
   await readFile(path.join(dist, 'index.html'));

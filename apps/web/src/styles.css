@@ -276,6 +276,40 @@ input:disabled {
   margin: 0 auto;
 }
 
+.download-fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 28px auto 4px;
+  padding: 13px 34px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 12px 30px #1d6b4d33;
+}
+
+.download-fab:hover {
+  background: #1d6b4d;
+}
+
+.import-warning {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.import-warning-title {
+  margin: 0;
+  color: #e5484d;
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .measure-host {
   position: absolute;
   left: -10000px;

@@ -78,7 +78,7 @@ public class ImportParser {
                 if (text.substring(before).isBlank()) emptyPages++;
             }
             if (text.toString().isBlank()) throw error("SCANNED_PDF", "扫描版或无可提取文字的 PDF 暂不支持，可手动创建简历");
-            return new Parsed(text.toString(), emptyPages > 0 ? "部分页面没有文字层，可能包含扫描内容，请核对原文件，手动补全。" : "PDF 多栏阅读顺序可能有差异，请使用“查看原件”核对编辑内容。");
+            return new Parsed(text.toString(), emptyPages > 0 ? "部分页面没有文字层，可能包含扫描内容，请核对原文件，手动补全。" : "PDF 多栏阅读顺序可能有差异，请核对编辑内容。");
         }
     }
 
