@@ -159,6 +159,34 @@ class CloudDeploymentTests(unittest.TestCase):
         self.assertFalse(any('stop' in c or 'up' in c or 'exec' in c for c in commands))
         self.assertFalse((root / 'current').exists())
 
+    def test_memory_capability_check_uses_the_selected_classic_builder(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            base = Path(scratch)
+            binary = base / 'bin'
+            binary.mkdir()
+            # Isolate archive/resource preflight; exercise the actual shell command selection.
+            (binary / 'python3').write_text('#!/bin/sh\ncat >/dev/null\n')
+            (binary / 'docker').write_text('''#!/bin/sh
+if [ "$1" = info ]; then exit 0; fi
+if [ "$1" = build ] && [ "$2" = --help ]; then
+  [ "$DOCKER_BUILDKIT" = 0 ] || exit 1
+  echo '  --memory Memory limit'
+  exit 0
+fi
+[ "$DOCKER_BUILDKIT" = 0 ] || exit 2
+echo "$*" >> "$BUILD_LOG"
+''')
+            for tool in binary.iterdir(): tool.chmod(0o755)
+            log = base / 'build.log'
+            env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
+                   'BUILD_LOG': str(log)}
+            result = subprocess.run(['bash', str(ROOT / 'scripts/build-cloud.sh'), str(base),
+                                     'ci-' + 'a' * 40 + '-1-1'], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = log.read_text().splitlines()
+            self.assertEqual(len(commands), 3)
+            self.assertTrue(all('--memory=1g' in c and '--cpu-quota=100000' in c for c in commands))
+
     def test_backup_failure_restarts_old_application_and_does_not_migrate(self):
         result, commands, _ = self.deployment('backup')
         self.assertNotEqual(result.returncode, 0)

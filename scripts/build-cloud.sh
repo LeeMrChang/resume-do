@@ -35,12 +35,13 @@ if ! docker info >/dev/null 2>&1; then DOCKER=(sudo -n docker); fi
 for service in api worker web; do
   echo "Building $service on server (one CPU, 1 GiB memory limit)"
   # Classic builder enforces per-build resource limits without creating a shared BuildKit service.
-  "${DOCKER[@]}" build --help | grep -q -- '--memory' || { echo 'Docker build memory limits unavailable'; exit 1; }
   if [[ "${DOCKER[0]}" == sudo ]]; then
     builder=(sudo -n env DOCKER_BUILDKIT=0 docker)
   else
     builder=(env DOCKER_BUILDKIT=0 docker)
   fi
+  help=$("${builder[@]}" build --help)
+  [[ "$help" == *--memory* ]] || { echo 'Docker classic build memory limits unavailable'; exit 1; }
   "${builder[@]}" build --memory=1g --memory-swap=1g --cpu-period=100000 --cpu-quota=100000 \
     --build-arg MAVEN_IMAGE=mirror.ccs.tencentyun.com/library/maven:3.9-eclipse-temurin-21 \
     --build-arg JAVA_IMAGE=mirror.ccs.tencentyun.com/library/eclipse-temurin:21-jre \
