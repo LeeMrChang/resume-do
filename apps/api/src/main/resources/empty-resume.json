@@ -1,6 +1,7 @@
 {
   "document": {
     "schemaVersion": 1,
+    "moduleDefaultsApplied": true,
     "basic": {
       "name": "",
       "gender": "",
@@ -27,6 +28,23 @@
       "arrival": ""
     },
     "sections": [
+      {
+        "id": "application",
+        "type": "rich",
+        "title": "报考信息",
+        "visible": false,
+        "items": [
+          {
+            "id": "body-a1f0c3d2b4e84f0c9d61",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
       {
         "id": "education",
         "type": "records",
@@ -96,23 +114,6 @@
         ]
       },
       {
-        "id": "evaluation",
-        "type": "rich",
-        "title": "自我评价",
-        "visible": true,
-        "items": [
-          {
-            "id": "body-acc2850edd844936bf94",
-            "title": "",
-            "role": "",
-            "startMonth": "",
-            "endMonth": "",
-            "ongoing": false,
-            "body": ""
-          }
-        ]
-      },
-      {
         "id": "intern",
         "type": "records",
         "title": "实习经验",
@@ -154,6 +155,23 @@
         "items": [
           {
             "id": "body-ee020e3e63414e799755",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "evaluation",
+        "type": "rich",
+        "title": "自我评价",
+        "visible": true,
+        "items": [
+          {
+            "id": "body-acc2850edd844936bf94",
             "title": "",
             "role": "",
             "startMonth": "",

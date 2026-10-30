@@ -24,3 +24,6 @@ docs/ziJUU7QU
 
 # Generated local PDF.js resources (copied from the locked dependency)
 apps/web/public/pdfjs/
+
+# Local secrets loaded only by the local profile
+.resume-do-local.yml

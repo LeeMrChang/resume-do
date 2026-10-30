@@ -1,11 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { sanitizeRichText } from '@resume-do/templates';
+import AiRewritePanel from './AiRewritePanel';
+import { plainTextFromHtml, plainTextToRichHtml } from './aiRewrite';
 
 interface RichEditorProps {
   value: string;
   onChange: (html: string) => void;
   label: string;
   minHeight?: number;
+  aiSection?: string;
+  aiTargetRole?: string;
 }
 
 const TOOLBAR: { command: string; label: string; title: string; value?: string }[] = [
@@ -19,7 +23,7 @@ const TOOLBAR: { command: string; label: string; title: string; value?: string }
   { command: 'redo', label: '↷', title: '恢复' },
 ];
 
-export default function RichEditor({ value, onChange, label, minHeight }: RichEditorProps) {
+export default function RichEditor({ value, onChange, label, minHeight, aiSection, aiTargetRole }: RichEditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const lastValue = useRef(value);
 
@@ -54,6 +58,26 @@ export default function RichEditor({ value, onChange, label, minHeight }: RichEd
     } else {
       document.execCommand(command, false);
     }
+    emit();
+  }
+
+  function applyAiText(text: string) {
+    const element = ref.current;
+    if (!element) return;
+    const html = plainTextToRichHtml(text);
+    element.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    let replaced = false;
+    try {
+      replaced = document.execCommand('insertHTML', false, html);
+    } catch {
+      replaced = false;
+    }
+    if (!replaced || element.innerHTML === value) element.innerHTML = html;
     emit();
   }
 
@@ -98,6 +122,14 @@ export default function RichEditor({ value, onChange, label, minHeight }: RichEd
           document.execCommand('insertText', false, text);
         }}
       />
+      {aiSection && (
+        <AiRewritePanel
+          section={aiSection}
+          targetRole={aiTargetRole ?? ''}
+          currentText={() => plainTextFromHtml(ref.current?.innerHTML ?? '')}
+          onApply={applyAiText}
+        />
+      )}
     </div>
   );
 }

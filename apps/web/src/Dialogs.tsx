@@ -344,6 +344,9 @@ export function ExportDialog({
     if (version === 'original') {
       setPhase('preparing'); setError(''); setDownloadError('');
       try {
+        if (await ensureSaved() == null) {
+          throw new Error('最新名称尚未保存成功，请先解决保存问题后再下载');
+        }
         await api.downloadSource(resumeId, defaultFilename);
         setDownloaded(true); setPhase('ready');
       } catch (err) { setError(messageOf(err)); setPhase('failed'); }

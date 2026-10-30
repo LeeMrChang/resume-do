@@ -73,6 +73,14 @@ public class AuthService {
                 .orElseThrow(() -> ApiException.unauthorized("请先登录"));
     }
 
+    @Transactional
+    public UserAccount updateThemePreference(String email, String themePreference) {
+        UserAccount account = current(email);
+        users.updateThemePreference(account.id(), themePreference);
+        return users.findById(account.id())
+                .orElseThrow(() -> ApiException.unauthorized("请先登录"));
+    }
+
     public void logout(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
         if (session != null) {

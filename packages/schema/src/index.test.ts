@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CANONICAL_SECTION_IDS,
   SAMPLE_DOCUMENT,
   ALL_TEMPLATE_IDS,
   createDefaultAppearance,
   createDefaultDocument,
+  ensureCanonicalSections,
   safeParseAppearance,
   safeParseDocument,
 } from './index';
@@ -12,6 +14,39 @@ import {
 test('default document and sample are valid', () => {
   assert.equal(safeParseDocument(createDefaultDocument()).success, true);
   assert.equal(safeParseDocument(SAMPLE_DOCUMENT).success, true);
+});
+
+test('default document lists every canonical module in tab order', () => {
+  const doc = createDefaultDocument();
+  assert.deepEqual(doc.sections.map((section) => section.id), CANONICAL_SECTION_IDS);
+  assert.equal(doc.moduleDefaultsApplied, true);
+  assert.equal(safeParseDocument(doc).success, true);
+});
+
+test('ensureCanonicalSections adds missing modules once without reordering existing ones', () => {
+  const legacy = createDefaultDocument();
+  legacy.moduleDefaultsApplied = false;
+  legacy.sections = legacy.sections.filter((section) => !['application', 'intern', 'honor'].includes(section.id));
+  legacy.sections.push({ id: 'custom-2', type: 'rich', title: '自定义模块', visible: true, items: legacy.sections[0].items.slice(0, 1) });
+  const merged = ensureCanonicalSections(legacy);
+  assert.equal(safeParseDocument(merged).success, true);
+  assert.equal(merged.moduleDefaultsApplied, true);
+  const ids = merged.sections.map((section) => section.id);
+  assert.deepEqual(ids.slice(0, 4), ['application', 'education', 'work', 'skills']);
+  assert.ok(ids.includes('application'));
+  assert.ok(ids.indexOf('application') < ids.indexOf('education'), 'missing canonical modules fill their canonical position');
+  assert.ok(ids.indexOf('intern') < ids.indexOf('campus'));
+  assert.equal(ids[ids.length - 1], 'custom-2', 'unknown modules keep their place');
+  assert.equal(merged.sections.filter((section) => section.id === 'application')[0].visible, false);
+  assert.deepEqual(ensureCanonicalSections(merged).sections.map((section) => section.id), ids, 'merge is idempotent');
+});
+
+test('deleted canonical modules stay deleted after defaults are applied', () => {
+  const doc = createDefaultDocument();
+  doc.sections = doc.sections.filter((section) => !['application', 'intern', 'campus', 'honor', 'hobby'].includes(section.id));
+  const next = ensureCanonicalSections(doc);
+  assert.deepEqual(next.sections.map((section) => section.id), doc.sections.map((section) => section.id));
+  assert.equal(safeParseDocument(next).success, true);
 });
 
 test('rejects start month later than end month', () => {

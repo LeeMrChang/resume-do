@@ -10,39 +10,42 @@ import {
   createDefaultDocument,
   emptyRecordItem,
   emptyRichItem,
+  ensureCanonicalSections,
   stripTags,
   ageFromBirthMonth,
 } from '@resume-do/schema';
-import { exportFilename } from '@resume-do/templates';
 import { api, ApiError, type ResumeResponse, type ResumeSummary, type User } from './api';
 import Preview from './Preview';
 import RichEditor from './RichEditor';
 import OriginalResumeView from './OriginalResumeView';
 import OriginalImportButton from './OriginalImportButton';
+import ThemeToggle from './ThemeToggle';
 import { resumeViewKind, confirmResumeDelete } from './originalResume';
 import {
   AppearanceDialog,
   ConflictDialog,
   ExportDialog,
   Modal,
-  RenameDialog,
   type AppearanceDialogKind,
 } from './Dialogs';
 
 type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict';
 type DialogState =
   | { kind: 'appearance'; which: AppearanceDialogKind }
-  | { kind: 'rename' }
   | { kind: 'export' }
   | null;
 
-const P0_SECTION_IDS = ['education', 'work', 'skills', 'project', 'evaluation', 'custom'];
 const MAX_SECTION_TEXT = 20_000;
+const FIXED_TABS = [
+  { id: 'basic', name: '基本信息' },
+  { id: 'intent', name: '求职意向' },
+] as const;
 
 function sectionFieldLabels(sectionId: string): { title: string; role: string } {
   if (sectionId === 'education') return { title: '学校名称', role: '专业与学历' };
   if (sectionId === 'project') return { title: '项目名称', role: '参与角色' };
   if (sectionId === 'campus') return { title: '组织或学校', role: '角色' };
+  if (sectionId === 'intern') return { title: '公司名称', role: '实习岗位' };
   return { title: '机构或公司名称', role: '职位或角色' };
 }
 
@@ -98,6 +101,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   const [zoom, setZoom] = useState(1);
   const [collapsed, setCollapsed] = useState(false);
   const [pageCount, setPageCount] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -109,6 +113,11 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   const [clearing, setClearing] = useState(false);
   const [appearanceDraft, setAppearanceDraft] = useState<ResumeAppearance | null>(null);
   const [toast, setToast] = useState('');
+  const [toastTone, setToastTone] = useState<'default' | 'success'>('default');
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [removeTarget, setRemoveTarget] = useState<ResumeSection | null>(null);
+  const renameCancelledRef = useRef(false);
 
   const docRef = useRef<ResumeDocument | null>(null);
   const appearanceRef = useRef<ResumeAppearance | null>(null);
@@ -126,14 +135,16 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   const toastTimerRef = useRef<number | null>(null);
   const bootRef = useRef(false);
   const mountedRef = useRef(true);
+  const canvasRef = useRef<HTMLElement | null>(null);
 
   function setStatusBoth(next: SaveStatus) {
     statusRef.current = next;
     setSaveStatus(next);
   }
 
-  function showToast(message: string) {
+  function showToast(message: string, tone: 'default' | 'success' = 'default') {
     setToast(message);
+    setToastTone(tone);
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => setToast(''), 2_600);
   }
@@ -165,12 +176,13 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     versionRef.current = 0;
     savedVersionRef.current = 0;
     titleRef.current = resume.title || '我的简历';
-    docRef.current = resume.document;
+    const document = ensureCanonicalSections(resume.document);
+    docRef.current = document;
     appearanceRef.current = resume.appearance;
     mutationRef.current = null;
 
     setTitle(resume.title || '我的简历');
-    setDoc(resume.document);
+    setDoc(document);
     setAppearance(resume.appearance);
     setLastSavedAt(new Date(resume.updatedAt));
     setStatusBoth('saved');
@@ -272,6 +284,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         setSaveErrorMessage('');
         if (versionRef.current === startVersion) {
           setStatusBoth('saved');
+          showToast(`${new Date().toLocaleTimeString('zh-CN', { hour12: false })} 保存成功！`, 'success');
         } else if (statusRef.current !== 'conflict') {
           setStatusBoth('dirty');
         }
@@ -388,26 +401,74 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   }
 
   function moveModule(sectionId: string, delta: number) {
-    if (!doc) return;
-    const ordered = doc.sections.filter((entry) => P0_SECTION_IDS.includes(entry.id));
-    const position = ordered.findIndex((entry) => entry.id === sectionId);
-    const neighbor = ordered[position + delta];
-    if (!neighbor) return;
-    const from = doc.sections.findIndex((entry) => entry.id === sectionId);
-    const to = doc.sections.findIndex((entry) => entry.id === neighbor.id);
+    const current = docRef.current;
+    if (!current) return;
+    const from = current.sections.findIndex((entry) => entry.id === sectionId);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= current.sections.length) return;
     updateDocument((draft) => {
       [draft.sections[from], draft.sections[to]] = [draft.sections[to], draft.sections[from]];
     });
   }
 
-  function renameSection(nextTitle: string) {
-    if (!section) return;
+  function startRename(entry: ResumeSection) {
+    renameCancelledRef.current = false;
+    setRenamingId(entry.id);
+    setRenameDraft(entry.title);
+  }
+
+  function commitRename(entry: ResumeSection) {
+    if (renameCancelledRef.current) {
+      renameCancelledRef.current = false;
+      setRenamingId(null);
+      return;
+    }
+    const next = renameDraft.trim();
+    setRenamingId(null);
+    if (!next || next === entry.title) return;
+    if (next.length > 20) {
+      showToast('模块名称最多 20 个字符');
+      return;
+    }
     updateDocument((draft) => {
-      const target = draft.sections.find((entry) => entry.id === section.id);
-      if (target) target.title = nextTitle;
+      const target = draft.sections.find((section) => section.id === entry.id);
+      if (target) target.title = next;
     });
-    setDialog(null);
     showToast('模块名称已更新');
+  }
+
+  function addSection() {
+    const current = docRef.current;
+    if (!current) return;
+    if (current.sections.length >= 30) {
+      showToast('模块数量已达上限');
+      return;
+    }
+    let suffix = 2;
+    while (current.sections.some((entry) => entry.id === `custom-${suffix}`)) suffix += 1;
+    const id = `custom-${suffix}`;
+    updateDocument((draft) => {
+      draft.sections.push({ id, type: 'rich', title: '自定义模块', visible: true, items: [emptyRichItem()] });
+    });
+    setCollapsed(false);
+    setSelected(id);
+    setItemIndex(0);
+    renameCancelledRef.current = false;
+    setRenamingId(id);
+    setRenameDraft('自定义模块');
+    showToast('已添加自定义模块，可直接修改名称');
+  }
+
+  function removeSection(entry: ResumeSection) {
+    updateDocument((draft) => {
+      draft.sections = draft.sections.filter((section) => section.id !== entry.id);
+    });
+    if (selected === entry.id) {
+      setSelected('basic');
+      setItemIndex(0);
+    }
+    setRemoveTarget(null);
+    showToast(`已删除“${entry.title}”`);
   }
 
   function addItem() {
@@ -537,10 +598,11 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     }
 
     titleRef.current = remote.title || '我的简历';
-    docRef.current = remote.document;
+    const document = ensureCanonicalSections(remote.document);
+    docRef.current = document;
     appearanceRef.current = remote.appearance;
     setTitle(remote.title || '我的简历');
-    setDoc(remote.document);
+    setDoc(document);
     setAppearance(remote.appearance);
     setAppearanceDraft(null);
     setDialog(null);
@@ -602,10 +664,30 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const p0Sections = useMemo(
-    () => (doc ? doc.sections.filter((section) => P0_SECTION_IDS.includes(section.id)) : []),
-    [doc],
-  );
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    function update() {
+      const pages = canvas!.querySelectorAll('.pages .r-page');
+      if (!pages.length) return;
+      const limit = canvas!.getBoundingClientRect().top + 96;
+      let visible = 1;
+      pages.forEach((page, index) => {
+        if (page.getBoundingClientRect().top <= limit) visible = index + 1;
+      });
+      setCurrentPage(visible);
+    }
+    update();
+    canvas.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(canvas);
+    return () => {
+      canvas.removeEventListener('scroll', update);
+      observer.disconnect();
+    };
+  }, [doc, pageCount, zoom]);
+
+  const sectionTabs = doc?.sections ?? [];
   const section = doc?.sections.find((entry) => entry.id === selected) ?? null;
   const record = section && section.type === 'records' ? section.items[itemIndex] : undefined;
 
@@ -627,8 +709,11 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   })();
 
   const defaultFilename = useMemo(
-    () => (doc && appearance ? exportFilename({ document: doc, appearance }) : '简历.pdf'),
-    [doc, appearance],
+    () => {
+      const name = title.replace(/[\u0000-\u001f\u007f-\u009f\\/:*?"<>|]/g, '_').trim().replace(/\.pdf$/i, '').trim();
+      return `${name || '简历'}.pdf`;
+    },
+    [title],
   );
 
   async function originalCreated(resume: ResumeResponse) {
@@ -771,6 +856,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
           }}>下载 PDF</button>
           <button type="button" disabled={deleting} onClick={() => void deleteCurrent()}>删除简历</button>
         </>}
+        <ThemeToggle />
         <button onClick={() => void logout()}>退出</button>
         {actionError && <span role="alert">{actionError}</span>}
       </header>
@@ -804,6 +890,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
             value={title}
             maxLength={100}
             aria-label="简历名称"
+            placeholder="请设置导出文件名"
             onChange={(event) => updateTitle(event.target.value)}
           />
           <small className={`save-state ${saveStatus}`} role="status" title={saveErrorMessage}>
@@ -817,6 +904,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         )}
         <OriginalImportButton beforeUpload={async () => !deleting && await ensureSaved() != null} onCreated={originalCreated} targetId={activeResumeId} />
         <button type="button" disabled={deleting} onClick={() => setConfirmClear(true)}>清空内容</button>
+        <ThemeToggle />
         <span className="user-chip" title={user.email}>
           {user.displayName || user.email}
         </span>
@@ -828,36 +916,36 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         </button>
       </header>
 
-      {doc.importWarning && <p className="note" role="status">导入提示：{doc.importWarning}</p>}
       <nav className="toolbar" aria-label="排版工具">
         <button type="button" onClick={() => openAppearance('spacing')}>
-          ↕ 间距设置
+          <span className="tool-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7h16M4 12h10M4 17h16" /></svg>
+          </span>
+          间距设置
         </button>
         <button type="button" onClick={() => openAppearance('font')}>
-          T 字体 / 语言
+          <span className="tool-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 6h14M12 6v13" /></svg>
+          </span>
+          字体 / 语言
         </button>
         <button type="button" onClick={() => openAppearance('color')}>
-          ◐ 皮肤设置
-        </button>
-        <button type="button" disabled title="封面与自荐信在 P1 规划中">
-          ▣ 封面设置
+          <span className="tool-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M9 4 4 7l2 4 2-1v10h8V10l2 1 2-4-5-3-3 2-3-2z" /></svg>
+          </span>
+          皮肤设置
         </button>
         <button type="button" onClick={() => openAppearance('template')}>
-          ▤ 更换模板
-        </button>
-        <span className="spacer" />
-        <button
-          type="button"
-          onClick={() => void saveNow()}
-          disabled={saveStatus === 'saving' || saveStatus === 'conflict'}
-        >
-          立即保存
+          <span className="tool-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 4v16M9 9h11" /></svg>
+          </span>
+          更换模板
         </button>
       </nav>
 
       <div className="workspace">
         <div className="stage">
-          <main className="canvas">
+          <main className="canvas" ref={canvasRef}>
             <div className="canvas-head">
               <span id="page-info">
                 A4 预览 · 共 {pageCount} 页
@@ -883,41 +971,13 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
               zoom={zoom}
               onPageCount={(count) => setPageCount(count)}
             />
+            <div className="page-badge">
+              第{currentPage}页（共{pageCount}页）
+            </div>
             <button type="button" className="download-fab" onClick={openExportDialog}>
               ↓ 下载 / 导出简历
             </button>
           </main>
-
-          <aside className="helper">
-            <div className="num">EDIT / PREVIEW / EXPORT</div>
-            <h3>让内容与排版一起完成</h3>
-            <p>上方预览与导出的 PDF 使用同一套模板和分页逻辑，文字可复制。</p>
-            <ul className="steps">
-              <li>
-                <b>01 填写与实时预览</b>
-                在底部切换模块，编辑内容后上方同步更新。
-              </li>
-              <li>
-                <b>02 组织简历</b>
-                点击圆点隐藏模块；使用编辑区按钮调整顺序和名称。
-              </li>
-              <li>
-                <b>03 调整版式</b>
-                修改字体、颜色与间距，从 60 套模板中选择适合的版式。
-              </li>
-              <li>
-                <b>04 导出 PDF</b>
-                先保存成功，再固定快照生成 A4 文件并直接下载。
-              </li>
-              <li>
-                <b>05 自动保存</b>
-                停止输入 800ms 后保存，最长 5 秒提交一次。
-              </li>
-            </ul>
-            <p>
-              姓名为空时显示占位姓名，其他联系方式留空时不输出。隐藏模块后内容仍保留，导出只包含可见且有内容的模块。
-            </p>
-          </aside>
         </div>
 
         <section className={`editor ${collapsed ? 'collapsed' : ''}`} aria-label="简历编辑区">
@@ -935,140 +995,200 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
             </svg>
           </button>
           <div className="module-tabs" role="tablist" aria-label="简历模块">
-            {[
-              { id: 'basic', name: '基本信息' },
-              { id: 'intent', name: '求职意向' },
-              ...p0Sections.map((entry) => ({ id: entry.id, name: entry.title })),
-            ].map((tab) => {
-              const position = p0Sections.findIndex(item => item.id === tab.id);
-              const entry = p0Sections[position];
-              return (
-                <div
-                  key={tab.id}
-                  className={`tab ${selected === tab.id ? 'selected' : ''}`}
-                  role="tab"
-                  aria-selected={selected === tab.id}
-                  tabIndex={0}
-                  onClick={() => selectTab(tab.id)}
-                  onKeyDown={(event) => {
-                    if (event.target !== event.currentTarget) return;
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      selectTab(tab.id);
-                    }
-                  }}
-                >
-                  <div className="tab-controls">
-                    {entry && <button
-                      type="button"
-                      className="module-move"
-                      aria-label={`${entry.title}左移`}
-                      title="模块左移"
-                      disabled={position === 0}
-                      onClick={event => { event.stopPropagation(); moveModule(entry.id, -1); }}
-                    >
-                      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
-                        <path d="m12 4-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>}
-                    {entry ? (
+            {FIXED_TABS.map((tab) => (
+              <div
+                key={tab.id}
+                className={`tab fixed ${selected === tab.id ? 'selected' : ''}`}
+                role="tab"
+                aria-selected={selected === tab.id}
+                tabIndex={0}
+                onClick={() => selectTab(tab.id)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    selectTab(tab.id);
+                  }
+                }}
+              >
+                <div className="tab-controls"><span className="tab-fixed-mark" /></div>
+                <div className="tab-name"><span className="tab-label">{tab.name}</span></div>
+              </div>
+            ))}
+            {sectionTabs.map((entry, index) => (
+              <div
+                key={entry.id}
+                className={`tab ${selected === entry.id ? 'selected' : ''} ${entry.visible ? '' : 'off'}`}
+                role="tab"
+                aria-selected={selected === entry.id}
+                tabIndex={0}
+                title={entry.title}
+                onClick={() => selectTab(entry.id)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    selectTab(entry.id);
+                  }
+                }}
+              >
+                <div className="tab-controls">
+                  <button
+                    type="button"
+                    className="module-move"
+                    aria-label={`${entry.title}左移`}
+                    title="模块左移"
+                    disabled={index === 0}
+                    onClick={event => { event.stopPropagation(); moveModule(entry.id, -1); }}
+                  >
+                    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+                      <path d="m12 4-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={entry.visible}
+                    aria-label={`${entry.visible ? '隐藏' : '显示'}${entry.title}`}
+                    className={`module-switch ${entry.visible ? 'on' : ''}`}
+                    title={entry.visible ? '隐藏模块（内容保留）' : '显示模块'}
+                    onClick={event => { event.stopPropagation(); toggleSection(entry); }}
+                  />
+                  <button
+                    type="button"
+                    className="module-move"
+                    aria-label={`${entry.title}右移`}
+                    title="模块右移"
+                    disabled={index === sectionTabs.length - 1}
+                    onClick={event => { event.stopPropagation(); moveModule(entry.id, 1); }}
+                  >
+                    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+                      <path d="m8 4 6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="tab-name">
+                  {renamingId === entry.id ? (
+                    <input
+                      className="tab-rename"
+                      value={renameDraft}
+                      maxLength={20}
+                      autoFocus
+                      aria-label={`${entry.title}新名称`}
+                      onClick={event => event.stopPropagation()}
+                      onChange={event => setRenameDraft(event.target.value)}
+                      onBlur={() => commitRename(entry)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          event.currentTarget.blur();
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault();
+                          renameCancelledRef.current = true;
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span className="tab-label">{entry.title}</span>
+                  )}
+                  {renamingId !== entry.id && (
+                    <>
                       <button
                         type="button"
-                        className={`dot ${entry.visible ? 'on' : ''}`}
-                        aria-label={`${entry.visible ? '隐藏' : '显示'}${entry.title}`}
-                        aria-pressed={entry.visible}
-                        title={entry.visible ? '隐藏模块（内容保留）' : '显示模块'}
-                        onClick={event => { event.stopPropagation(); toggleSection(entry); }}
-                      />
-                    ) : <span className="dot fixed" />}
-                    {entry && <button
-                      type="button"
-                      className="module-move"
-                      aria-label={`${entry.title}右移`}
-                      title="模块右移"
-                      disabled={position === p0Sections.length - 1}
-                      onClick={event => { event.stopPropagation(); moveModule(entry.id, 1); }}
-                    >
-                      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
-                        <path d="m8 4 6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>}
-                  </div>
-                  {tab.name}
+                        className="module-rename"
+                        aria-label={`重命名${entry.title}`}
+                        title="修改模块名称"
+                        onClick={event => { event.stopPropagation(); startRename(entry); }}
+                      >
+                        <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true">
+                          <path d="M4 13.5V16h2.5l7.6-7.6-2.5-2.5L4 13.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                          <path d="m12.4 4.6 1.4-1.4a1.2 1.2 0 0 1 1.7 0l1.3 1.3a1.2 1.2 0 0 1 0 1.7l-1.4 1.4" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                      {!entry.visible && (
+                        <button
+                          type="button"
+                          className="module-remove"
+                          aria-label={`删除${entry.title}`}
+                          title="删除模块"
+                          onClick={event => { event.stopPropagation(); setRemoveTarget(entry); }}
+                        >
+                          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true">
+                            <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" />
+                            <path d="M6.5 10h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
-              );
-            })}
-
+              </div>
+            ))}
+            <button type="button" className="tab-add" onClick={addSection} title="添加模块" aria-label="添加模块">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true">
+                <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
 
           <div id="resume-editing-panel" className="editing" hidden={collapsed}>
-            <aside className="item-list">
-              {selected === 'basic' && (
-                <>
-                  <strong>基本信息</strong>
-                  <p className="note">带 * 的字段建议填写；留空字段不会出现在预览中。</p>
-                </>
-              )}
-              {selected === 'intent' && (
-                <>
-                  <strong>求职意向</strong>
-                  <p className="note">全部允许留空，不自动推断薪资单位。</p>
-                </>
-              )}
-              {section && section.type === 'rich' && (
-                <>
-                  <strong>{section.title}</strong>
-                  <p className="note">
-                    {section.visible ? '此模块已展示在简历中。' : '此模块已隐藏，编辑内容仍会保留。'}
-                  </p>
-                  <p className="note">支持加粗、斜体、下划线、列表、链接与清除格式。</p>
-                </>
-              )}
-              {section && section.type === 'records' && (
-                <>
-                  <strong>{section.title}</strong>
-                  <p className="note">
-                    {section.visible ? '此模块已展示在简历中。' : '此模块已隐藏，编辑内容仍会保留。'}
-                  </p>
-                  {section.items.length === 0 && <p className="note">暂无经历，点击下方按钮开始填写。</p>}
-                  {section.items.map((item, index) => (
-                    <div
-                      key={item.id}
-                      className={`row ${index === itemIndex ? 'active' : ''}`}
-                      onClick={() => setItemIndex(index)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setItemIndex(index);
-                        }
-                      }}
-                    >
-                      {item.title.trim() || '未命名经历'}
-                      <small>{item.role.trim() || '请补充信息'}</small>
-                    </div>
-                  ))}
-                  <button type="button" className="add-item" onClick={addItem}>
-                    ＋ 新增经历
-                  </button>
-                </>
-              )}
-            </aside>
+            {section?.type === 'records' && (
+              <aside className="item-list">
+                <strong>{section.title}列表</strong>
+                {section.items.length === 0 && <p className="note">暂无内容，点击下方按钮开始填写。</p>}
+                {section.items.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className={`row ${index === itemIndex ? 'active' : ''}`}
+                    onClick={() => setItemIndex(index)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setItemIndex(index);
+                      }
+                    }}
+                  >
+                    {item.title.trim() || '未命名经历'}
+                    <small>{item.role.trim() || '请补充信息'}</small>
+                  </div>
+                ))}
+                <button type="button" className="add-item" onClick={addItem}>
+                  ＋ 新增{section.title}
+                </button>
+              </aside>
+            )}
 
             <div className="fields">
+              {(selected === 'basic' || selected === 'intent') && (
+                <p className="module-hint">
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <circle cx="8" cy="8" r="7" fill="#f0a020" />
+                    <path d="M8 7v4" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+                    <circle cx="8" cy="4.8" r="0.9" fill="#fff" />
+                  </svg>
+                  {selected === 'basic'
+                    ? '填写的信息会自动排版在简历上，不需要的信息可以选择不填或删除内容。'
+                    : '求职意向会显示在简历顶部，全部字段均可留空。'}
+                </p>
+              )}
               {selected === 'basic' && (
                 <div className="field-grid">
                   <div className="photo-field">
-                    <label htmlFor="resume-photo">简历照片（可选）</label>
+                    <span className="photo-label">照片设置</span>
                     <div className="photo-actions">
                       {doc.basic.photo && <img className="photo-preview" src={doc.basic.photo} alt="简历照片" />}
-                      <input id="resume-photo" type="file" accept="image/png,image/jpeg,image/webp"
-                        onChange={event => {
-                          void uploadPhoto(event.target.files?.[0]);
-                          event.target.value = '';
-                        }} />
-                      {doc.basic.photo && <button type="button" onClick={() => updateDocument(draft => { draft.basic.photo = ''; })}>移除照片</button>}
+                      <label className="photo-upload">
+                        <input id="resume-photo" type="file" accept="image/png,image/jpeg,image/webp"
+                          onChange={event => {
+                            void uploadPhoto(event.target.files?.[0]);
+                            event.target.value = '';
+                          }} />
+                        {doc.basic.photo ? '更换照片' : '上传照片'}
+                      </label>
+                      {doc.basic.photo && <button type="button" className="photo-remove" onClick={() => updateDocument(draft => { draft.basic.photo = ''; })}>移除照片</button>}
                       <label className="photo-toggle">
                         <input type="checkbox" checked={doc.basic.showPhoto !== false} onChange={event => updateDocument(draft => { draft.basic.showPhoto = event.target.checked; })} />
                         展示照片
@@ -1204,16 +1324,6 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
 
               {section && (
                 <>
-                  <div className="section-actions">
-                    <span className="desc">
-                      {section.visible ? '此模块已展示在简历中' : '此模块已隐藏，编辑内容仍会保留'}
-                    </span>
-                    <button type="button" onClick={() => setDialog({ kind: 'rename' })}>
-                      修改模块名称
-                    </button>
-
-                  </div>
-
                   {section.type === 'records' && !record && (
                     <p className="note">暂无经历，点击左侧“新增经历”开始填写。</p>
                   )}
@@ -1278,10 +1388,12 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                         <span>{(textLength(record.body) / MAX_SECTION_TEXT * 100).toFixed(1)}%</span>
                       </div>
                       <RichEditor
-                        key={`${section.id}-${record.id}`}
+                        key={`${activeResume?.id ?? ''}-${section.id}-${record.id}`}
                         value={record.body}
                         onChange={(body) => updateItem(record, { body })}
                         label={`${section.title}正文`}
+                        aiSection={section.id}
+                        aiTargetRole={doc.intent.role}
                       />
 
                       <div className="section-actions item-actions">
@@ -1315,10 +1427,12 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
                         </span>
                       </div>
                       <RichEditor
-                        key={`${section.id}-rich`}
+                        key={`${activeResume?.id ?? ''}-${section.id}-rich`}
                         value={section.items[0]?.body ?? ''}
                         onChange={(body) => updateRichBody(section.id, body)}
                         label={`${section.title}正文`}
+                        aiSection={section.id}
+                        aiTargetRole={doc.intent.role}
                       />
                     </>
                   )}
@@ -1329,7 +1443,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         </section>
       </div>
 
-      <div className={`toast ${toast ? 'show' : ''}`} role="status">
+      <div className={`toast ${toast ? 'show' : ''} ${toastTone}`} role="status">
         {toast}
       </div>
 
@@ -1358,12 +1472,17 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         />
       )}
 
-      {dialog?.kind === 'rename' && section && (
-        <RenameDialog
-          title={section.title}
-          onSave={renameSection}
-          onClose={() => setDialog(null)}
-        />
+      {removeTarget && (
+        <Modal title="删除模块" onClose={() => setRemoveTarget(null)}>
+          <div className="import-warning">
+            <p className="import-warning-title">删除“{removeTarget.title}”后，该模块内容将一并移除！</p>
+            <p className="note">此操作无法撤销，需要保留内容可先导出 PDF 备份。</p>
+          </div>
+          <footer>
+            <button type="button" onClick={() => setRemoveTarget(null)}>取消</button>
+            <button type="button" className="primary" onClick={() => removeSection(removeTarget)}>确认删除</button>
+          </footer>
+        </Modal>
       )}
 
       {dialog?.kind === 'export' && resumeIdRef.current && (

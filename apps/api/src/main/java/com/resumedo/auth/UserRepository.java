@@ -12,11 +12,13 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class UserRepository {
+    private static final String COLUMNS = "id, email, password_hash, display_name, theme_preference";
     private static final RowMapper<UserAccount> MAPPER = (rs, rowNum) -> new UserAccount(
             rs.getLong("id"),
             rs.getString("email"),
             rs.getString("password_hash"),
-            rs.getString("display_name"));
+            rs.getString("display_name"),
+            rs.getString("theme_preference"));
 
     private final JdbcTemplate jdbc;
 
@@ -26,7 +28,7 @@ public class UserRepository {
 
     public Optional<UserAccount> findByEmail(String email) {
         List<UserAccount> users = jdbc.query(
-                "SELECT id, email, password_hash, display_name FROM users WHERE email = ?",
+                "SELECT " + COLUMNS + " FROM users WHERE email = ?",
                 MAPPER,
                 email);
         return users.stream().findFirst();
@@ -34,10 +36,14 @@ public class UserRepository {
 
     public Optional<UserAccount> findById(long id) {
         List<UserAccount> users = jdbc.query(
-                "SELECT id, email, password_hash, display_name FROM users WHERE id = ?",
+                "SELECT " + COLUMNS + " FROM users WHERE id = ?",
                 MAPPER,
                 id);
         return users.stream().findFirst();
+    }
+
+    public void updateThemePreference(long id, String themePreference) {
+        jdbc.update("UPDATE users SET theme_preference = ? WHERE id = ?", themePreference, id);
     }
 
     public boolean existsByEmail(String email) {

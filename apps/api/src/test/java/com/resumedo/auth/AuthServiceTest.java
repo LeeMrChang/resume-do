@@ -36,7 +36,7 @@ class AuthServiceTest {
         when(passwordEncoder.encode("password123")).thenReturn("hash-1");
         when(users.insert(eq("alice@example.com"), eq("hash-1"), anyString())).thenReturn(42L);
         when(users.findById(42L)).thenReturn(Optional.of(
-                new UserAccount(42, "alice@example.com", "hash-1", "alice")));
+                new UserAccount(42, "alice@example.com", "hash-1", "alice", "dark")));
 
         UserAccount account = service.register("  Alice@Example.com ", "password123", "   ");
 
@@ -78,7 +78,7 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
                 .thenReturn(authentication);
         when(users.findByEmail("dave@example.com"))
-                .thenReturn(Optional.of(new UserAccount(9, "dave@example.com", "hash", "Dave")));
+                .thenReturn(Optional.of(new UserAccount(9, "dave@example.com", "hash", "Dave", "dark")));
 
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpSession session = mock(HttpSession.class);
@@ -100,5 +100,18 @@ class AuthServiceTest {
                 .isInstanceOf(ApiException.class)
                 .satisfies(throwable -> assertThat(((ApiException) throwable).status())
                         .isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    void updateThemePreferencePersistsAndReturnsUpdatedAccount() {
+        when(users.findByEmail("eve@example.com"))
+                .thenReturn(Optional.of(new UserAccount(11, "eve@example.com", "hash", "Eve", "dark")));
+        when(users.findById(11L))
+                .thenReturn(Optional.of(new UserAccount(11, "eve@example.com", "hash", "Eve", "light")));
+
+        UserAccount updated = service.updateThemePreference(" Eve@Example.com ", "light");
+
+        verify(users).updateThemePreference(11, "light");
+        assertThat(updated.themePreference()).isEqualTo("light");
     }
 }

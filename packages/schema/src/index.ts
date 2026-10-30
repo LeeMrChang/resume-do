@@ -162,6 +162,8 @@ export const resumeDocumentSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
     importWarning: z.string().max(500).optional(),
+    /** Set once default modules have been merged, so deleted modules stay deleted. */
+    moduleDefaultsApplied: z.boolean().optional(),
     basic: basicSchema,
     intent: intentSchema,
     sections: z.array(sectionSchema).max(30),
@@ -256,42 +258,55 @@ export function totalTextLength(doc: ResumeDocument): number {
   return basicLength + intent + body;
 }
 
+type CanonicalSectionSpec = Pick<ResumeSection, 'id' | 'type' | 'title' | 'visible'>;
+
+/** Editor tab order and default visibility; `application` is new in v2.3 and hidden by default. */
+export const CANONICAL_SECTIONS: readonly CanonicalSectionSpec[] = [
+  { id: 'application', type: 'rich', title: '报考信息', visible: false },
+  { id: 'education', type: 'records', title: '教育背景', visible: true },
+  { id: 'work', type: 'records', title: '工作经验', visible: true },
+  { id: 'skills', type: 'rich', title: '专业技能', visible: true },
+  { id: 'project', type: 'records', title: '项目经验', visible: true },
+  { id: 'intern', type: 'records', title: '实习经验', visible: false },
+  { id: 'campus', type: 'records', title: '校园经历', visible: false },
+  { id: 'honor', type: 'rich', title: '荣誉证书', visible: false },
+  { id: 'evaluation', type: 'rich', title: '自我评价', visible: true },
+  { id: 'hobby', type: 'rich', title: '兴趣爱好', visible: false },
+  { id: 'custom', type: 'rich', title: '自定义模块', visible: false },
+];
+
+export const CANONICAL_SECTION_IDS = CANONICAL_SECTIONS.map((section) => section.id);
+
+function canonicalSection(spec: CanonicalSectionSpec): ResumeSection {
+  return {
+    ...spec,
+    items: spec.type === 'records' ? [emptyRecordItem()] : [emptyRichItem()],
+  };
+}
+
+/** Adds canonical modules once to older or imported resumes without touching existing order. */
+export function ensureCanonicalSections(doc: ResumeDocument): ResumeDocument {
+  if (doc.moduleDefaultsApplied) return doc;
+  const sections = [...doc.sections];
+  CANONICAL_SECTIONS.forEach((spec, canonicalIndex) => {
+    if (sections.some((section) => section.id === spec.id)) return;
+    const nextCanonical = CANONICAL_SECTIONS.slice(canonicalIndex + 1)
+      .map((entry) => sections.findIndex((section) => section.id === entry.id))
+      .find((index) => index >= 0);
+    const insertAt = nextCanonical === undefined ? sections.length : nextCanonical;
+    sections.splice(insertAt, 0, canonicalSection(spec));
+  });
+  return { ...doc, moduleDefaultsApplied: true, sections };
+}
+
 function defaultSections(): ResumeSection[] {
-  return [
-    {
-      id: 'education',
-      type: 'records',
-      title: '教育背景',
-      visible: true,
-      items: [emptyRecordItem()],
-    },
-    {
-      id: 'work',
-      type: 'records',
-      title: '工作经验',
-      visible: true,
-      items: [emptyRecordItem()],
-    },
-    { id: 'skills', type: 'rich', title: '专业技能', visible: true, items: [emptyRichItem()] },
-    {
-      id: 'project',
-      type: 'records',
-      title: '项目经验',
-      visible: true,
-      items: [emptyRecordItem()],
-    },
-    { id: 'evaluation', type: 'rich', title: '自我评价', visible: true, items: [emptyRichItem()] },
-    { id: 'intern', type: 'records', title: '实习经验', visible: false, items: [emptyRecordItem()] },
-    { id: 'campus', type: 'records', title: '校园经历', visible: false, items: [emptyRecordItem()] },
-    { id: 'honor', type: 'rich', title: '荣誉证书', visible: false, items: [emptyRichItem()] },
-    { id: 'hobby', type: 'rich', title: '兴趣爱好', visible: false, items: [emptyRichItem()] },
-    { id: 'custom', type: 'rich', title: '自定义模块', visible: false, items: [emptyRichItem()] },
-  ];
+  return CANONICAL_SECTIONS.map(canonicalSection);
 }
 
 export function createDefaultDocument(): ResumeDocument {
   return {
     schemaVersion: SCHEMA_VERSION,
+    moduleDefaultsApplied: true,
     basic: {
       name: '',
       gender: '',

@@ -1,9 +1,21 @@
-# 本地开发示例，可提交；真实密码使用环境变量，不要写入本文件。
+# 本地开发配置，可提交；真实密钥由忽略文件或环境变量提供。
 spring:
+  config:
+    import:
+      - optional:file:./.resume-do-local.yml
+      - optional:file:./apps/api/.resume-do-local.yml
   datasource:
     url: jdbc:mysql://${RESUME_DO_DB_HOST:127.0.0.1}:${RESUME_DO_DB_PORT:3306}/${RESUME_DO_DB_NAME:resume_do}?useUnicode=true&characterEncoding=utf8&allowPublicKeyRetrieval=true&useSSL=false&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: ${RESUME_DO_DB_USER:resume_do}
     password: ${RESUME_DO_DB_PASSWORD:change_me}
 
 app:
+  ai:
+    enabled: ${RESUME_DO_AI_ENABLED:true}
+    api-key: ${RESUME_DO_AI_API_KEY:}
+    base-url: ${RESUME_DO_AI_BASE_URL:https://api.deepseek.com}
+    model: ${RESUME_DO_AI_MODEL:deepseek-flash}
+    timeout-ms: ${RESUME_DO_AI_TIMEOUT_MS:30000}
+    daily-limit: ${RESUME_DO_AI_DAILY_LIMIT:20}
+    per-minute-limit: ${RESUME_DO_AI_PER_MINUTE_LIMIT:5}
   storage-dir: ${RESUME_DO_STORAGE_DIR:../../data}

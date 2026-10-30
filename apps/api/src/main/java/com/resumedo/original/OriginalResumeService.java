@@ -193,7 +193,10 @@ public class OriginalResumeService {
         }
         return value;
     }
-    public static String downloadFilename(String title) { return truncate(title.replaceAll("[\\p{Cc}\\\\/:*?\"<>|]","_").strip(),150)+".pdf"; }
+    public static String downloadFilename(String title) {
+        String name=title.replaceAll("[\\p{Cc}\\\\/:*?\"<>|]","_").strip().replaceFirst("(?i)\\.pdf$", "").strip();
+        return truncate(name.isBlank()?"简历":name,150)+".pdf";
+    }
     private static String truncate(String text,int max) { return text.substring(0,text.offsetByCodePoints(0,Math.min(max,text.codePointCount(0,text.length())))); }
     private static String sha256(Path file) throws IOException {
         try { var digest=MessageDigest.getInstance("SHA-256"); try(var in=Files.newInputStream(file)) { byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1) digest.update(b,0,n); } return HexFormat.of().formatHex(digest.digest()); }

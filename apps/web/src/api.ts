@@ -7,6 +7,7 @@ export interface User {
   id: number;
   email: string;
   displayName: string;
+  themePreference?: 'light' | 'dark' | 'system';
 }
 
 export interface OriginalSource { filename: string; mime: string; bytes: number; pages: number | null; }
@@ -38,6 +39,25 @@ export interface SaveResumeRequest {
   title: string;
   document: ResumeDocument;
   appearance: ResumeAppearance;
+}
+
+export type AiRewriteAction = 'polish' | 'condense';
+
+export interface AiRewriteRequest {
+  requestId: string;
+  action: AiRewriteAction;
+  text: string;
+  section?: string;
+  targetRole?: string;
+  privacyConsent: true;
+}
+
+export interface AiRewriteResponse {
+  requestId: string;
+  action: AiRewriteAction;
+  originalText: string;
+  rewrittenText: string;
+  warnings: string[];
 }
 
 export type ExportStatus = 'queued' | 'rendering' | 'ready' | 'expired' | 'failed';
@@ -100,6 +120,11 @@ export const api = {
   register: (email: string, password: string, displayName: string) =>
     request<User>('/api/auth/register', json({ email, password, displayName })),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
+  updateThemePreference: (themePreference: 'light' | 'dark' | 'system') =>
+    request<User>('/api/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ themePreference }),
+    }),
 
   openLegacyEditor: (id: string) => request<ResumeResponse>(`/api/imports/from-original/${id}`, { method: 'POST' }),
   importEditable: (file: File) => {
@@ -141,6 +166,8 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+  aiRewrite: (payload: AiRewriteRequest, signal?: AbortSignal) =>
+    request<AiRewriteResponse>('/api/ai/rewrite', { ...json(payload), signal }),
 
   createExport: (
     resumeId: string,

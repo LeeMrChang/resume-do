@@ -2,12 +2,14 @@ package com.resumedo.auth;
 
 import com.resumedo.auth.AuthDtos.LoginRequest;
 import com.resumedo.auth.AuthDtos.RegisterRequest;
+import com.resumedo.auth.AuthDtos.ThemePreferenceRequest;
 import com.resumedo.auth.AuthDtos.UserResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,5 +45,12 @@ public class AuthController {
     @GetMapping("/me")
     public UserResponse me(Authentication authentication) {
         return UserResponse.from(authService.current(authentication.getName()));
+    }
+
+    @PatchMapping("/me")
+    public UserResponse updateTheme(
+            @Valid @RequestBody ThemePreferenceRequest body, Authentication authentication) {
+        return UserResponse.from(
+                authService.updateThemePreference(authentication.getName(), body.themePreference()));
     }
 }

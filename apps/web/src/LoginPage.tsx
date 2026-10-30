@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError, type User } from './api';
+import ThemeToggle from './ThemeToggle';
 
 type Mode = 'login' | 'register';
 
@@ -35,6 +36,7 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (user:
 
   return (
     <div className="login-shell">
+      <ThemeToggle className="login-theme" />
       <div className="login-card">
         <div className="logo login-logo">
           <span>简</span>Resume Do · 简历工作台

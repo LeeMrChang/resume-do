@@ -32,6 +32,11 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     };
     record.document.sections = [{ id: 'evaluation', type: 'rich', title: '自我评价', visible: true,
       items: [{ id: 'body', title: '', role: '', startMonth: '', endMonth: '', ongoing: false, body: '<p>起始内容</p>' }] }];
+    const evaluationBody = () => {
+      const section = record.document.sections.find((entry) => entry.id === 'evaluation');
+      assert.ok(section, 'evaluation section must exist');
+      return section.items[0].body;
+    };
     await page.route('**/api/**', async route => {
       const request = route.request();
       const url = new URL(request.url()).pathname;
@@ -62,10 +67,10 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     await editor.pressSequentially('第三行');
     await editor.blur();
     await page.getByRole('status').filter({ hasText: '已保存' }).waitFor();
-    assert.match(record.document.sections[0].items[0].body, /<p>第二行<\/p>/);
+    assert.match(evaluationBody(), /<p>第二行<\/p>/);
     await page.reload();
     await page.getByRole('tab', { name: '自我评价' }).click();
-    assert.deepEqual(await editor.locator('p').allTextContents(), ['第二行', '第三行']);
+    assert.deepEqual(await editor.locator('p').allTextContents(), ['第一行', '第二行', '第三行']);
     assert.ok((await editor.innerText()).startsWith('第一行'));
     assert.equal(record.document.basic.name, '段落回归');
     assert.equal(record.document.intent.role, '技术文档工程师');
@@ -97,7 +102,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
       let low = 1, high = 240, found = false;
       while (low <= high) {
         const count = Math.floor((low + high) / 2);
-        record.document.sections[0].items[0].body = Array.from({ length: count }, (_, i) => `<p>分页段落 ${i + 1}</p>`).join('');
+        record.document.sections.find((entry) => entry.id === 'evaluation')!.items[0].body = Array.from({ length: count }, (_, i) => `<p>分页段落 ${i + 1}</p>`).join('');
         await page.reload();
         await page.getByLabel('姓名', { exact: true }).waitFor();
         await page.locator('.pages .r-page').first().waitFor();
@@ -107,7 +112,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
         else {
           found = true;
           assert.equal(await page.locator('.overflow-warning').count(), 0);
-          const paragraphs = page.locator('.pages .r-paragraph');
+          const paragraphs = page.locator('.pages p.r-paragraph');
           assert.equal(await paragraphs.count(), count);
           for (const content of await page.locator('.pages .r-content').allTextContents()) assert.ok(content.trim());
           assert.ok(await page.locator('.pages .r-content').evaluateAll(contents => contents.every(content => {
@@ -122,7 +127,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
       }
       assert.ok(found, `Could not build ${target} pages`);
     }
-    record.document.sections[0].items[0].body = `<p>${'超长单段内容'.repeat(1000)}</p>`;
+    record.document.sections.find((entry) => entry.id === 'evaluation')!.items[0].body = `<p>${'超长单段内容'.repeat(1000)}</p>`;
     await page.reload();
     await page.locator('.overflow-warning').waitFor();
     console.log('Browser assertions passed; A06 line splitting remains unsupported. API is mocked; no real PDF download tested.');

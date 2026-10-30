@@ -6,4 +6,12 @@ spring:
     password: ${RESUME_DO_DB_PASSWORD}
 
 app:
+  ai:
+    enabled: ${RESUME_DO_AI_ENABLED:false}
+    api-key: ${RESUME_DO_AI_API_KEY:}
+    base-url: ${RESUME_DO_AI_BASE_URL:https://api.deepseek.com}
+    model: ${RESUME_DO_AI_MODEL:deepseek-flash}
+    timeout-ms: ${RESUME_DO_AI_TIMEOUT_MS:30000}
+    daily-limit: ${RESUME_DO_AI_DAILY_LIMIT:20}
+    per-minute-limit: ${RESUME_DO_AI_PER_MINUTE_LIMIT:5}
   storage-dir: ${RESUME_DO_STORAGE_DIR:/data}
