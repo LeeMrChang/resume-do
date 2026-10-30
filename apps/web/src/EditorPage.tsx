@@ -886,7 +886,6 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         <div className="logo">
           <span>简</span>Resume Do · 简历工作台
         </div>
-        <span className="badge">P0 本地版</span>
         <div className="head-title">
           <input
             className="title-input"
