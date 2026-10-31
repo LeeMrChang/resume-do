@@ -44,7 +44,7 @@ if ! "${DOCKER[@]}" ps --format '{{.Names}}' | grep -qx 'xiachen-public-gateway-
 fi
 compose pull gateway
 image=$(compose config --images)
-"${DOCKER[@]}" run --rm --network none --read-only --cap-drop ALL \
+"${DOCKER[@]}" run --rm --network none --read-only --cap-drop ALL --cap-add NET_BIND_SERVICE \
   --tmpfs /tmp --tmpfs /data --tmpfs /config \
   -v "$release/Caddyfile:/etc/caddy/Caddyfile:ro" "$image" \
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
