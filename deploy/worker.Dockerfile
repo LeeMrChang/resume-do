@@ -15,7 +15,8 @@ RUN sed -i "s|http://deb.debian.org|http://${DEBIAN_MIRROR}|g" /etc/apt/sources.
     && apt-get update \
     && apt-get install -y --no-install-recommends fonts-noto-cjk fontconfig \
     && rm -rf /var/lib/apt/lists/*
-RUN npx playwright install --with-deps chromium
+ARG PLAYWRIGHT_DOWNLOAD_HOST
+RUN PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_DOWNLOAD_HOST" npx playwright install --with-deps chromium
 
 COPY packages packages
 COPY apps/pdf-worker apps/pdf-worker
