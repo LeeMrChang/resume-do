@@ -22,7 +22,15 @@ with tarfile.open(source, 'r:gz') as archive:
     if any(not m.isfile() or m.size > 1024*1024 for m in members):
         raise SystemExit('Unsafe gateway archive')
     base = pathlib.Path(target)
-    base.mkdir(mode=0o755)  # Immutable release: use a fresh commit for changes.
+    if base.exists():
+        if base.is_symlink() or any(
+            not (base / m.name).is_file() or (base / m.name).is_symlink()
+            or (base / m.name).read_bytes() != archive.extractfile(m).read()
+            for m in members
+        ):
+            raise SystemExit('Existing gateway release differs; use a fresh commit')
+        sys.exit(0)
+    base.mkdir(mode=0o755)
     base.chmod(0o755)
     for member in members:
         output = base / member.name
@@ -76,8 +84,14 @@ for ((attempt=0; attempt<90; attempt++)); do
   sleep 2
 done
 [[ "$ready" == 1 ]] || { echo 'Public certificates or upstreams are not ready' >&2; exit 1; }
-ln -s "$release" "$root/current.next"
-mv -Tf "$root/current.next" "$root/current"
+python3 - "$root" "$release" <<'PYLINK'
+import os, sys
+root, release = sys.argv[1:]
+temporary = root + '/current.next'
+if os.path.lexists(temporary): os.unlink(temporary)
+os.symlink(release, temporary)
+os.replace(temporary, root + '/current')
+PYLINK
 touch "$release/SUCCESS"
 trap - EXIT
 echo "Public HTTPS gateway deployed: $version"
