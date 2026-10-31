@@ -465,3 +465,11 @@ Windows 可使用 `netstat -ano | findstr :8080`。不要直接强制结束所�
 A06 当前仅部分完成：按段落／列表项分页，超长单段提示并阻止导出，尚未实现逐行跨页。原验收要求仍保留，本轮未豁免，也不标记全部通过。浏览器回归和 Docker 字体差异尚未完成验收，详见[本轮修复与验证记录](docs/ops/2026-10-29-review-follow-up.md)。
 
 更详细的本地测试记录见 [本地验证记录](docs/ops/2026-10-28-resume-p0-local-verification.md)。需求与实现计划位于 [docs/superpowers](docs/superpowers)。
+
+## 公网访问
+
+- 工具首页：https://xiachen.xyz
+- 简历工作台：https://resume.xiachen.xyz
+- 记账小程序服务：https://cost.xiachen.xyz（保留既有接口 https://api.xiachen.xyz）
+
+共享 HTTPS 网关、证书续期、隔离边界、验收和回退见 [公网部署记录](docs/ops/2026-10-31-public-https.md)。
