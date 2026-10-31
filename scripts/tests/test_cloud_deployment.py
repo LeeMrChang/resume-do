@@ -122,7 +122,7 @@ class CloudDeploymentTests(unittest.TestCase):
             with open(os.environ['FAKE_LOG'],'a') as log: log.write(json.dumps(args)+'\\n')
             if args[0]=='load': sys.stdin.buffer.read()
             if args[0]=='login': sys.stdin.read()
-            if args[0]=='pull' and os.environ['FAIL_STAGE']=='pull': sys.exit(1)
+            if args[0] in ('pull', 'push') and os.environ['FAIL_STAGE']==args[0]: sys.exit(1)
             if args[0]=='compose':
                 command=args[args.index('-f')+2:]
                 if command[0]=='ps':
@@ -159,6 +159,7 @@ class CloudDeploymentTests(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / name).read_bytes())
             (payload_root / 'scripts/build-cloud.sh').write_text(
+                '#!/bin/bash\nexit 0\n' if fail_stage == 'push' else
                 '#!/bin/bash\necho "Simulated build failure" >&2\nexit 1\n')
             source = base / 'source.tar.gz'
             source.write_bytes(gzip.compress(b'fake-source'))
@@ -200,6 +201,13 @@ class CloudDeploymentTests(unittest.TestCase):
                 path.write_text(json.dumps(refs))
                 with self.assertRaises(ValueError): self.packager().validate_image_refs(path)
 
+    def test_domestic_publish_failure_preserves_current_application_and_cleans_credentials(self):
+        result, commands, root = self.deployment('push', source_mode=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(any(c[0] == 'push' for c in commands))
+        self.assertFalse(any('stop' in c or 'up' in c for c in commands))
+        self.assertFalse(list(root.glob('registry-auth.*')))
+
     def test_source_build_failure_does_not_stop_services_or_touch_database(self):
         result, commands, root = self.deployment('none', source_mode=True)
         self.assertNotEqual(result.returncode, 0)
@@ -233,6 +241,7 @@ echo "$*" >> "$BUILD_LOG"
             self.assertEqual(result.returncode, 0, result.stderr)
             commands = log.read_text().splitlines()
             self.assertEqual(len(commands), 3)
+            self.assertTrue(all('--build-arg PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright' in c for c in commands))
             self.assertTrue(all('--memory=1g' in c and '--cpu-quota=100000' in c for c in commands))
             self.assertTrue(all('--build-arg DEBIAN_MIRROR=mirrors.cloud.tencent.com' in c for c in commands))
 
