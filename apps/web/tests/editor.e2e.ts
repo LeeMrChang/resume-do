@@ -16,6 +16,8 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
   try {
     browser = await chromium.launch({ channel: process.env.RESUME_DO_BROWSER_CHANNEL || 'chrome', headless: true });
     const page = await browser.newPage();
+    // Refresh returns to the resume library; reopen the record before editing.
+    const openResume = () => page.locator('.resume-card .card-open').first().click();
     await page.route(`${base}/**`, async route => {
       const pathname = new URL(route.request().url()).pathname;
       if (pathname.startsWith('/api/')) return route.fallback();
@@ -54,7 +56,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
       await route.fulfill({ json: body });
     });
     await page.goto(base);
-    await page.locator('.resume-card .card-open').first().click();
+    await openResume();
     await page.getByLabel('姓名', { exact: true }).fill('段落回归');
     await page.getByRole('tab', { name: '求职意向', exact: true }).click();
     await page.getByLabel('意向职位', { exact: true }).fill('技术文档工程师');
@@ -70,6 +72,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     await page.getByRole('status').filter({ hasText: '已保存' }).waitFor();
     assert.match(evaluationBody(), /<p>第二行<\/p>/);
     await page.reload();
+    await openResume();
     await page.getByRole('tab', { name: '自我评价' }).click();
     assert.deepEqual(await editor.locator('p').allTextContents(), ['第一行', '第二行', '第三行']);
     assert.ok((await editor.innerText()).startsWith('第一行'));
@@ -109,6 +112,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     await page.getByRole('button', { name: '应用', exact: true }).click();
     await page.getByRole('status').filter({ hasText: '已保存' }).waitFor();
     await page.reload();
+    await openResume();
     await page.getByLabel('姓名', { exact: true }).waitFor();
     assert.equal(record.appearance.templateId, '1015');
     assert.deepEqual(record.document, before.document);
@@ -117,6 +121,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     await page.getByRole('button', { name: '应用', exact: true }).click();
     await page.getByRole('status').filter({ hasText: '已保存' }).waitFor();
     await page.reload();
+    await openResume();
     await page.getByLabel('姓名', { exact: true }).waitFor();
     assert.equal(record.appearance.fontSize, 16);
     for (const target of [1, 3, 5]) {
@@ -125,6 +130,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
         const count = Math.floor((low + high) / 2);
         record.document.sections.find((entry) => entry.id === 'evaluation')!.items[0].body = Array.from({ length: count }, (_, i) => `<p>分页段落 ${i + 1}</p>`).join('');
         await page.reload();
+        await openResume();
         await page.getByLabel('姓名', { exact: true }).waitFor();
         await page.locator('.pages .r-page').first().waitFor();
         const actual = await page.locator('.pages .r-page').count();
@@ -150,6 +156,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     }
     record.document.sections.find((entry) => entry.id === 'evaluation')!.items[0].body = `<p>${'超长单段内容'.repeat(1000)}</p>`;
     await page.reload();
+    await openResume();
     await page.locator('.overflow-warning').waitFor();
     console.log('Browser assertions passed; A06 line splitting remains unsupported. API is mocked; no real PDF download tested.');
   } finally {

@@ -95,7 +95,9 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   assert.equal(await page.getByLabel('简历名称').inputValue(),'我的简历');
   assert.equal(patches,1);
 
-  await page.reload(); await page.getByLabel('姓名',{exact:true}).waitFor();
+  await page.reload();
+  await page.locator('.resume-card .card-open').first().click();
+  await page.getByLabel('姓名',{exact:true}).waitFor();
   assert.equal(await page.getByLabel('姓名',{exact:true}).inputValue(),'');
  } finally { await browser.close(); }
 });
