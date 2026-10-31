@@ -126,6 +126,9 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (user:
           </p>
         </div>
       </div>
+      <footer className="site-registration">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">粤ICP备2026169848号-1</a>
+      </footer>
     </div>
   );
 }
