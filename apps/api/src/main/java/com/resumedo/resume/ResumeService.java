@@ -32,14 +32,33 @@ public class ResumeService {
     }
 
     public List<ResumeSummary> list(long ownerId) {
-        return repository.list(ownerId).stream()
+        return list(ownerId, false);
+    }
+
+    public List<ResumeSummary> list(long ownerId, boolean deleted) {
+        return (deleted ? repository.listDeleted(ownerId) : repository.list(ownerId)).stream()
                 .map(row -> new ResumeSummary(
                         row.publicId(),
                         row.title(),
                         row.revision(),
                         row.templateId(),
-                        row.updatedAt(), row.kind(), row.source()))
+                        row.updatedAt(), row.kind(), row.source(), row.deletedAt()))
                 .toList();
+    }
+
+    /** Restores a trashed resume; the quota is re-checked because new resumes may have been created since. */
+    @Transactional
+    public ResumeResponse restore(long ownerId, String publicId) {
+        ResumeRow row = repository.findIncludingDeletedForUpdate(ownerId, publicId)
+                .orElseThrow(() -> ApiException.notFound("简历不存在"));
+        if (row.deletedAt() == null) {
+            return toResponse(row);
+        }
+        repository.requireCapacity(ownerId);
+        if (repository.restore(ownerId, publicId) != 1) {
+            throw ApiException.notFound("简历不存在");
+        }
+        return get(ownerId, publicId);
     }
 
     public ResumeResponse get(long ownerId, String publicId) {

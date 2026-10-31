@@ -55,10 +55,11 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
    throw Error(`Unexpected request ${method} ${url.pathname}`);
   });
   await page.goto(base);
+  await page.locator('.resume-card .card-open').first().click();
   await page.getByLabel('姓名',{exact:true}).waitFor();
   assert.equal(await page.getByLabel('姓名',{exact:true}).inputValue(),'导入测试');
-  assert.equal(await page.getByRole('button',{name:'查看原件',exact:true}).count(),0);
-  assert.equal(await page.getByRole('button',{name:'删除简历',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'查看原件',exact:true}).count(),1);
+  assert.equal(await page.getByRole('button',{name:'删除',exact:true}).count(),1);
   assert.equal(await page.getByLabel('切换简历').count(),0);
   const buttons=await page.locator('header.topbar button').allTextContents();
   assert.ok(buttons.some(text=>text.includes('清空内容')),'clear button stays in header');

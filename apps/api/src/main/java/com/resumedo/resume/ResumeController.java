@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,8 +31,15 @@ public class ResumeController {
     }
 
     @GetMapping
-    public List<ResumeSummary> list(Authentication authentication) {
-        return resumeService.list(ownerId(authentication));
+    public List<ResumeSummary> list(
+            @RequestParam(defaultValue = "0") int deleted,
+            Authentication authentication) {
+        return resumeService.list(ownerId(authentication), deleted == 1);
+    }
+
+    @PostMapping("/{publicId}/restore")
+    public ResumeResponse restore(@PathVariable String publicId, Authentication authentication) {
+        return resumeService.restore(ownerId(authentication), publicId);
     }
 
     @PostMapping

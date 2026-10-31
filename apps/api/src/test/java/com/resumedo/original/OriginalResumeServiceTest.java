@@ -92,14 +92,32 @@ class OriginalResumeServiceTest {
         assertThat(ids.getAllValues()).doesNotHaveDuplicates();
         try(var files=Files.list(root.resolve("resumes"))) { assertThat(files.filter(Files::isRegularFile).count()).isEqualTo(2); }
     }
-    @Test void deletedSourceIsRemovedAndRepeatedDeleteIsIdempotent() throws Exception {
+    @Test void trashKeepsSourceForRestoreAndPurgeRemovesIt() throws Exception {
         var response=service.create(9,new MockMultipartFile("file","x.pdf","",pdf(1,false)));
         var row=rows.get(response.id());
         when(repo.findIncludingDeletedForUpdate(9,response.id())).thenReturn(Optional.of(row));
         service.delete(9,response.id()); service.delete(9,response.id());
-        assertThat(Files.exists(root.resolve(row.sourceKey()))).isFalse();
+        // Soft delete keeps the file so the trash entry can be restored.
+        assertThat(Files.exists(root.resolve(row.sourceKey()))).isTrue();
         verify(repo,times(2)).softDelete(9,response.id());
-        verify(repo,times(2)).sourceRemoved(row.id());
+        var trashed=new ResumeRow(row.id(),row.publicId(),row.ownerId(),row.title(),row.documentJson(),
+                row.appearanceJson(),row.schemaVersion(),row.templateId(),row.templateVersion(),row.revision(),
+                row.lastMutationId(),row.createdAt(),row.updatedAt(),row.kind(),row.sourceKey(),
+                row.sourceFilename(),row.sourceMime(),row.sourceBytes(),row.sourceSha256(),row.sourcePages(),
+                java.time.Instant.now());
+        when(repo.findIncludingDeletedForUpdate(9,response.id())).thenReturn(Optional.of(trashed));
+        service.purge(9,response.id());
+        assertThat(Files.exists(root.resolve(row.sourceKey()))).isFalse();
+        verify(repo).hardDelete(row.id());
+    }
+    @Test void purgeRequiresTrashedResume() throws Exception {
+        var response=service.create(9,new MockMultipartFile("file","x.pdf","",pdf(1,false)));
+        var row=rows.get(response.id());
+        when(repo.findIncludingDeletedForUpdate(9,response.id())).thenReturn(Optional.of(row));
+        assertThatThrownBy(() -> service.purge(9,response.id()))
+            .isInstanceOfSatisfying(ApiException.class,e -> assertThat(e.code()).isEqualTo("RESUME_NOT_TRASHED"));
+        assertThat(Files.exists(root.resolve(row.sourceKey()))).isTrue();
+        verify(repo,never()).hardDelete(anyLong());
     }
     @Test void missingFileIsGoneAndUnsafePathsDoNotEscapeStorage() throws Exception {
         var response=service.create(9,new MockMultipartFile("file","x.pdf","",pdf(1,false)));

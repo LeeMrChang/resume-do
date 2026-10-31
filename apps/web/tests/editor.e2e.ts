@@ -54,6 +54,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
       await route.fulfill({ json: body });
     });
     await page.goto(base);
+    await page.locator('.resume-card .card-open').first().click();
     await page.getByLabel('姓名', { exact: true }).fill('段落回归');
     await page.getByRole('tab', { name: '求职意向', exact: true }).click();
     await page.getByLabel('意向职位', { exact: true }).fill('技术文档工程师');

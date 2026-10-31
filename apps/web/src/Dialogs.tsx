@@ -91,7 +91,7 @@ const DIALOG_TEXT: Record<AppearanceDialogKind, { title: string; subtitle: strin
   spacing: { title: '间距设置', subtitle: '修改会即时反映在预览中，点击“应用”后保存。' },
   font: { title: '字体 / 语言', subtitle: '字号为正文尺寸，按 A4 实际尺寸渲染，不受预览缩放影响。' },
   color: { title: '皮肤设置', subtitle: '主题色用于标题与分隔线，不改动正文中的显式加粗等格式。' },
-  template: { title: '更换模板', subtitle: '切换模板不会改变经历内容、顺序或隐藏状态。' },
+  template: { title: '更换模板', subtitle: '切换模板不会改变已有内容；空白简历会填入示例内容，方便直接修改。' },
 };
 
 const SWATCHES = ['#238b72', '#263f58', '#9a5b3f', '#5d5a8f', '#b03c4e', '#2f6f9f', '#44514a'];

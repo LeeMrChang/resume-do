@@ -73,6 +73,7 @@ test('AI polish/condense require consent, show suggestions and adopt into autosa
     });
 
     await page.goto(base);
+    await page.locator('.resume-card .card-open').first().click();
     await page.getByRole('tab', { name: '自我评价' }).click();
     const editor = page.getByRole('textbox', { name: '自我评价正文', exact: true });
     await editor.waitFor();

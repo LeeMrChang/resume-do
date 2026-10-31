@@ -184,6 +184,45 @@ class ResumeServiceTest {
                 .isEqualTo("第一行<p>第二行 <b>加粗</b> 结尾</p><p>第三行</p>");
     }
 
+    @Test
+    void restoreRechecksQuotaThenClearsDeletedAt() {
+        ResumeRow trashed = new ResumeRow(1, PUBLIC_ID, OWNER, "我的简历",
+                TestFixtures.validDocumentJson(), TestFixtures.validAppearanceJson(), 1, "clean", 1,
+                5, "m-1", CREATED, UPDATED, "structured", null, null, null, null, null, null, UPDATED);
+        when(repository.findIncludingDeletedForUpdate(OWNER, PUBLIC_ID)).thenReturn(Optional.of(trashed));
+        when(repository.restore(OWNER, PUBLIC_ID)).thenReturn(1);
+        when(repository.find(OWNER, PUBLIC_ID))
+                .thenReturn(Optional.of(row(1, PUBLIC_ID, 5, "m-1", "我的简历")));
+
+        ResumeResponse response = service.restore(OWNER, PUBLIC_ID);
+
+        verify(repository).requireCapacity(OWNER);
+        verify(repository).restore(OWNER, PUBLIC_ID);
+        assertThat(response.id()).isEqualTo(PUBLIC_ID);
+    }
+
+    @Test
+    void restoreOfAnActiveResumeIsIdempotentAndSkipsQuota() {
+        when(repository.findIncludingDeletedForUpdate(OWNER, PUBLIC_ID))
+                .thenReturn(Optional.of(row(1, PUBLIC_ID, 5, "m-1", "我的简历")));
+
+        ResumeResponse response = service.restore(OWNER, PUBLIC_ID);
+
+        verify(repository, never()).requireCapacity(anyLong());
+        verify(repository, never()).restore(anyLong(), anyString());
+        assertThat(response.revision()).isEqualTo(5);
+    }
+
+    @Test
+    void restoreRejectsUnknownResume() {
+        when(repository.findIncludingDeletedForUpdate(OWNER, PUBLIC_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.restore(OWNER, PUBLIC_ID))
+                .isInstanceOf(ApiException.class)
+                .satisfies(throwable -> assertThat(((ApiException) throwable).status())
+                        .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
     private static ResumeRow row(
             long id, String publicId, long revision, String lastMutationId, String title) {
         return new ResumeRow(

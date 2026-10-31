@@ -56,6 +56,38 @@ public class ResumeRepository {
                 ownerId);
     }
 
+    /** Trash listing. Files stay on disk until an explicit purge, so a trashed resume can be restored. */
+    public List<ResumeRow> listDeleted(long ownerId) {
+        return jdbc.query(
+                "SELECT " + COLUMNS + " FROM resumes WHERE owner_id = ? AND deleted_at IS NOT NULL "
+                        + "ORDER BY deleted_at DESC, id DESC",
+                MAPPER,
+                ownerId);
+    }
+
+    public int restore(long ownerId, String publicId) {
+        return jdbc.update(
+                "UPDATE resumes SET deleted_at = NULL, updated_at = NOW(3) "
+                        + "WHERE owner_id = ? AND public_id = ? AND deleted_at IS NOT NULL",
+                ownerId,
+                publicId);
+    }
+
+    /** Purges trashed rows older than the retention window. Files are removed by the caller first. */
+    public List<ResumeRow> trashedBefore(Instant cutoff) {
+        return jdbc.query(
+                "SELECT " + COLUMNS + " FROM resumes WHERE deleted_at IS NOT NULL AND deleted_at < ? "
+                        + "ORDER BY deleted_at LIMIT 50",
+                MAPPER,
+                Timestamp.from(cutoff));
+    }
+
+    /** Export jobs reference resumes without ON DELETE CASCADE, so they are removed first. */
+    public void hardDelete(long id) {
+        jdbc.update("DELETE FROM export_jobs WHERE resume_id = ?", id);
+        jdbc.update("DELETE FROM resumes WHERE id = ?", id);
+    }
+
     public void insert(
             String publicId,
             long ownerId,

@@ -349,8 +349,17 @@ paths:
       summary: 获取当前账号的简历列表
       operationId: listResumes
       description: |
-        返回未删除的简历，最多 5 条，包含 `structured` 与 `original` 两种类型。
-        列表只包含摘要，不包含 `document` / `appearance`。
+        默认返回未删除的简历（最多 5 条），`deleted=1` 时返回回收站中的简历（按删除时间倒序）。
+        包含 `structured` 与 `original` 两种类型；列表只包含摘要，不包含 `document` / `appearance`。
+      parameters:
+        - name: deleted
+          in: query
+          required: false
+          description: 传 `1` 返回回收站（已软删）简历；其他值返回在用简历。
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
       responses:
         "200":
           description: 简历摘要数组（无分页）
@@ -554,13 +563,22 @@ paths:
           $ref: "#/components/responses/InternalError"
     delete:
       tags: [简历]
-      summary: 删除简历（软删除）
+      summary: 移入回收站或彻底删除
       operationId: deleteResume
       description: |
-        软删除简历记录，并清理关联原件文件；无恢复入口。`structured` 与 `original` 都可删除。
+        默认（不带 `purge`）软删除简历：内容与原件文件一起保留 30 天，期间可用 restore 接口恢复。
+        `purge=1` 为彻底删除：要求记录已在回收站，移除数据库记录、导出任务与原件文件，不可恢复。
 
-        数据库删除成功但文件清理失败时返回 503 `SOURCE_DELETE_PENDING`：
-        简历已经不可见，后台每 60 秒重试清理，不需要前端重复删除。
+        后台每 60 秒清理超过 30 天的回收站记录及其原件文件。
+      parameters:
+        - name: purge
+          in: query
+          required: false
+          description: 传 `1` 彻底删除（仅对回收站中的简历有效）。
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
       responses:
         "204":
           description: 删除成功（无响应体）
@@ -568,15 +586,15 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-        "503":
-          description: 简历已删除，但原件文件清理失败（`SOURCE_DELETE_PENDING`）
+        "409":
+          description: 彻底删除时简历不在回收站（`RESUME_NOT_TRASHED`）
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
               example:
-                code: SOURCE_DELETE_PENDING
-                message: 简历已移除，原文件清理失败，系统将重试
+                code: RESUME_NOT_TRASHED
+                message: 请先将简历移入回收站
                 details: {}
 
   /api/resumes/{publicId}/source:

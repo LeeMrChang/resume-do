@@ -461,6 +461,45 @@ export const SAMPLE_DOCUMENT: ResumeDocument = {
   ],
 };
 
+/** Detached copy of the sample resume so editing it never mutates the shared constant. */
+export function createSampleDocument(): ResumeDocument {
+  return ensureCanonicalSections(structuredClone(SAMPLE_DOCUMENT));
+}
+
+function hasSectionContent(document: ResumeDocument): boolean {
+  return document.sections.some((section) =>
+    section.items.some(
+      (item) => item.title.trim() !== '' || item.role.trim() !== '' || stripTags(item.body).trim() !== '',
+    ),
+  );
+}
+
+/** True when the user has not typed anything yet, so template samples can seed safely. */
+export function isBlankDocument(document: ResumeDocument): boolean {
+  const basic = document.basic;
+  const textFields = [
+    basic.name,
+    basic.gender,
+    basic.city,
+    basic.phone,
+    basic.email,
+    basic.experienceYears,
+    basic.photo,
+    basic.birthMonth,
+    basic.age,
+    basic.nativePlace,
+    basic.ethnicity,
+    basic.maritalStatus,
+    basic.politicalStatus,
+    basic.height,
+    basic.weight,
+  ];
+  if (textFields.some((value) => (value ?? '').trim() !== '')) return false;
+  if ((basic.customFields?.length ?? 0) > 0) return false;
+  if (Object.values(document.intent).some((value) => value.trim() !== '')) return false;
+  return !hasSectionContent(document);
+}
+
 export function parseDocument(input: unknown): ResumeDocument {
   return resumeDocumentSchema.parse(input);
 }

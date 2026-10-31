@@ -7,13 +7,22 @@ import org.junit.jupiter.api.Test;
 
 class ImportMapperTest {
     private final ImportMapper mapper = new ImportMapper(new ObjectMapper());
+
+    /** Sections are looked up by id so the canonical order can change without rewriting assertions. */
+    private static JsonNode section(JsonNode doc, String id) {
+        for (JsonNode section : doc.path("sections")) {
+            if (id.equals(section.path("id").asText())) return section;
+        }
+        throw new AssertionError("missing section: " + id);
+    }
+
     @Test void mapsSectionsDatesAndMultipleExperiencesInOrderWithoutInventingFacts() {
         var draft = mapper.draft("姓名：张三\n邮箱：test@example.com\n求职意向\n意向职位：工程师\n工作经历\n甲公司｜研发 2020.01-2022.02\n负责服务A\n乙公司｜主管 2022.03-至今\n负责服务B\n教育背景\n某大学 2016.09-2020.06\n专业未提供\n专业技能\nJava 与 SQL\n自我评价\n认真负责", "original.docx");
         var doc = draft.path("document");
         assertThat(doc.path("basic").path("name").asText()).isEqualTo("张三");
         assertThat(doc.path("basic").path("city").asText()).isEmpty();
         assertThat(doc.path("intent").path("role").asText()).isEqualTo("工程师");
-        var work = doc.path("sections").get(1).path("items");
+        var work = section(doc, "work").path("items");
         assertThat(work.size()).isEqualTo(2);
         assertThat(work.get(0).path("title").asText()).isEqualTo("甲公司");
         assertThat(work.get(0).path("role").asText()).isEqualTo("研发");
@@ -21,13 +30,13 @@ class ImportMapperTest {
         assertThat(work.get(1).path("title").asText()).isEqualTo("乙公司");
         assertThat(work.get(1).path("ongoing").asBoolean()).isTrue();
         assertThat(work.get(0).path("body").asText()).contains("负责服务A");
-        assertThat(doc.path("sections").get(0).path("items").get(0).path("role").asText()).isEmpty();
+        assertThat(section(doc, "education").path("items").get(0).path("role").asText()).isEmpty();
         assertThatCode(() -> new ResumeValidator().validate(doc, draft.path("appearance"))).doesNotThrowAnyException();
     }
     @Test void preservesUnknownLongContentAndEscapesMarkupRatherThanExecutingIt() {
         String source = "无法归属的经历\n<script>alert(1)</script>\n" + "未知内容".repeat(6000);
         var draft = mapper.draft(source, "unknown.pdf");
-        var custom = draft.path("document").path("sections").get(5);
+        var custom = section(draft.path("document"), "custom");
         assertThat(custom.path("title").asText()).isEqualTo("待整理内容");
         var text = new StringBuilder();
         custom.path("items").forEach(item -> {
@@ -36,6 +45,15 @@ class ImportMapperTest {
         });
         assertThat(text.toString()).contains("无法归属的经历", "<script>alert(1)</script>", "未知内容".repeat(6000));
         assertThatCode(() -> new ResumeValidator().validate(draft.path("document"), draft.path("appearance"))).doesNotThrowAnyException();
+    }
+    @Test void recognizesBuiltInSectionHeadingsIncludingInternCampusHonorHobbyAndApplication() {
+        var doc = mapper.draft("报考信息\n报考岗位：综合管理岗\n实习经验\n某公司 2023.07-2023.09\n实习内容\n校园经历\n学生会 2021.09-2022.06\n组织活动\n荣誉证书\n一等奖学金\n兴趣爱好\n跑步", "full.docx").path("document");
+        assertThat(section(doc, "application").path("items").get(0).path("body").asText()).contains("综合管理岗");
+        assertThat(section(doc, "intern").path("items").get(0).path("title").asText()).isEqualTo("某公司");
+        assertThat(section(doc, "campus").path("items").get(0).path("title").asText()).isEqualTo("学生会");
+        assertThat(section(doc, "honor").path("items").get(0).path("body").asText()).contains("一等奖学金");
+        assertThat(section(doc, "hobby").path("items").get(0).path("body").asText()).contains("跑步");
+        assertThat(section(doc, "custom").path("items")).isEmpty();
     }
     @Test void invalidOrRepeatedFieldsRemainAvailableForManualReview() {
         var draft = mapper.draft("姓名：甲\n姓名：乙\n邮箱：not-an-email\n未知：保留", "test.pdf");
@@ -73,13 +91,12 @@ class ImportMapperTest {
         assertThat(basic.path("customFields")).isEmpty();
         assertThat(doc.path("intent").path("role").asText()).isEqualTo("Java工程师");
         var sections = doc.path("sections");
-        assertThat(sections.get(0).path("id").asText()).isEqualTo("education");
-        assertThat(sections.get(1).path("id").asText()).isEqualTo("work");
-        assertThat(sections.get(2).path("id").asText()).isEqualTo("skills");
-        assertThat(sections.get(3).path("id").asText()).isEqualTo("project");
-        assertThat(sections.get(4).path("id").asText()).isEqualTo("evaluation");
-        assertThat(sections.get(2).path("title").asText()).isEqualTo("技能特长");
-        var pending = sections.get(5);
+        assertThat(sections.get(0).path("id").asText()).isEqualTo("application");
+        assertThat(sections.get(1).path("id").asText()).isEqualTo("education");
+        assertThat(sections.get(2).path("id").asText()).isEqualTo("work");
+        assertThat(sections.get(3).path("id").asText()).isEqualTo("skills");
+        assertThat(section(doc, "skills").path("title").asText()).isEqualTo("技能特长");
+        var pending = section(doc, "custom");
         assertThat(pending.path("title").asText()).isEqualTo("待整理内容");
         assertThat(pending.path("items")).isEmpty();
         assertThat(draft.path("appearance").path("templateId").asText()).isEqualTo("imported");
@@ -95,8 +112,8 @@ class ImportMapperTest {
                 + "工作内容：\n"
                 + "· 负责模块A的设计与开发，完成数据迁移\n"
                 + "· 负责模块B";
-        var body = mapper.draft(source, "wrapped.pdf").path("document")
-                .path("sections").get(3).path("items").get(0).path("body").asText();
+        var body = section(mapper.draft(source, "wrapped.pdf").path("document"), "project")
+                .path("items").get(0).path("body").asText();
         var paragraphs = org.jsoup.Jsoup.parse(body).select("p").eachText().stream()
                 .filter(text -> !text.isBlank() && !text.equals("\u200b")).toList();
         assertThat(paragraphs).containsExactly(
@@ -113,16 +130,16 @@ class ImportMapperTest {
                 + "\u3000\u3000平台是一个商户运营管理系统，主要面向线下商户提供组织管理、\n"
                 + "活动运营及数据统计等功能。\n"
                 + "技术框架：Spring Boot";
-        var body = mapper.draft(source, "indent.pdf").path("document")
-                .path("sections").get(3).path("items").get(0).path("body").asText();
+        var body = section(mapper.draft(source, "indent.pdf").path("document"), "project")
+                .path("items").get(0).path("body").asText();
         assertThat(body).contains(
                 "<p>\u3000\u3000平台是一个商户运营管理系统，主要面向线下商户提供组织管理、活动运营及数据统计等功能。</p>",
                 "<p>技术框架：Spring Boot</p>");
     }
 
     @Test void splitsThreeColumnRecordRowsIntoCodeTitleAndRole() {
-        var work = mapper.draft("工作经验\n2019-01 ~ 2020-06    RBMS    铁路梁场综合管理平台    软件开发工程师", "x.pdf")
-                .path("document").path("sections").get(1).path("items").get(0);
+        var work = section(mapper.draft("工作经验\n2019-01 ~ 2020-06    RBMS    铁路梁场综合管理平台    软件开发工程师", "x.pdf")
+                .path("document"), "work").path("items").get(0);
         assertThat(work.path("title").asText()).isEqualTo("RBMS 铁路梁场综合管理平台");
         assertThat(work.path("role").asText()).isEqualTo("软件开发工程师");
     }

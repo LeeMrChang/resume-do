@@ -44,6 +44,10 @@ public final class ResumeDtos {
             String title,
             long revision,
             String templateId,
-            Instant updatedAt, String kind, Source source) {
+            Instant updatedAt, String kind, Source source, Instant deletedAt) {
+        public ResumeSummary(String id, String title, long revision, String templateId,
+                Instant updatedAt, String kind, Source source) {
+            this(id, title, revision, templateId, updatedAt, kind, source, null);
+        }
     }
 }

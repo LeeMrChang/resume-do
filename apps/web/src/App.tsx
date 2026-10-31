@@ -2,10 +2,14 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError, type User } from './api';
 import LoginPage from './LoginPage';
 import EditorPage from './EditorPage';
+import ResumeListPage from './ResumeListPage';
 import { ThemeProvider, useThemePreference } from './ThemeToggle';
+
+type View = { kind: 'list' } | { kind: 'editor'; resumeId: string };
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [view, setView] = useState<View>({ kind: 'list' });
   const [error, setError] = useState('');
   const theme = useThemePreference(user);
 
@@ -49,9 +53,25 @@ export default function App() {
   } else if (user === undefined) {
     content = <div className="boot">正在加载…</div>;
   } else if (!user) {
-    content = <LoginPage onAuthenticated={(next) => setUser(next)} />;
+    content = <LoginPage onAuthenticated={(next) => { setView({ kind: 'list' }); setUser(next); }} />;
+  } else if (view.kind === 'list') {
+    content = (
+      <ResumeListPage
+        user={user}
+        onOpen={(resumeId) => setView({ kind: 'editor', resumeId })}
+        onLogout={() => { setView({ kind: 'list' }); setUser(null); }}
+      />
+    );
   } else {
-    content = <EditorPage user={user} onLogout={() => setUser(null)} />;
+    content = (
+      <EditorPage
+        key={view.resumeId}
+        user={user}
+        resumeId={view.resumeId}
+        onBack={() => setView({ kind: 'list' })}
+        onLogout={() => { setView({ kind: 'list' }); setUser(null); }}
+      />
+    );
   }
 
   return <ThemeProvider value={theme}>{content}</ThemeProvider>;

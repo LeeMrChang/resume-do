@@ -8,9 +8,11 @@ import type {
 import {
   createDefaultAppearance,
   createDefaultDocument,
+  createSampleDocument,
   emptyRecordItem,
   emptyRichItem,
   ensureCanonicalSections,
+  isBlankDocument,
   stripTags,
   ageFromBirthMonth,
 } from '@resume-do/schema';
@@ -85,7 +87,12 @@ function Field({
   );
 }
 
-export default function EditorPage({ user, onLogout }: { user: User; onLogout: () => void }) {
+export default function EditorPage({ user, resumeId, onBack, onLogout }: {
+  user: User;
+  resumeId?: string;
+  onBack?: () => void;
+  onLogout: () => void;
+}) {
   const [booted, setBooted] = useState(false);
   const [activeResume, setActiveResume] = useState<ResumeResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -197,12 +204,12 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
       const list = await api.listResumes();
       let resume: ResumeResponse;
       setResumeList(list);
-      if (list.length > 0) {
-        const preferred = localStorage.getItem(`resume-do:active:${user.id}`);
-        resume = await api.getResume(list.find(item => item.id === preferred)?.id ?? list[0].id);
-      } else {
+      const preferred = resumeId ?? localStorage.getItem(`resume-do:active:${user.id}`);
+      const target = list.find(item => item.id === preferred)?.id ?? list[0]?.id;
+      if (!target) {
         setActiveResume(null); setBooted(true); return;
       }
+      resume = await api.getResume(target);
       if (!mountedRef.current) return;
 
       activateResume(resume, localStorage.getItem(`resume-do:view:${user.id}`) === `${resume.id}:original`);
@@ -550,11 +557,24 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   }
 
   function applyAppearance() {
-    if (appearanceDraft && JSON.stringify(appearanceDraft) !== JSON.stringify(appearanceRef.current)) {
+    const seedSample = dialog?.kind === 'appearance'
+      && dialog.which === 'template'
+      && docRef.current !== null
+      && isBlankDocument(docRef.current);
+    const appearanceChanged = appearanceDraft !== null
+      && JSON.stringify(appearanceDraft) !== JSON.stringify(appearanceRef.current);
+    if (appearanceChanged && appearanceDraft) {
       appearanceRef.current = appearanceDraft;
       setAppearance(appearanceDraft);
+    }
+    if (seedSample) {
+      const seeded = createSampleDocument();
+      docRef.current = seeded;
+      setDoc(seeded);
+    }
+    if (appearanceChanged || seedSample) {
       markChanged();
-      showToast('排版设置已应用，正在保存');
+      showToast(seedSample ? '已填入示例内容，可直接修改' : '排版设置已应用，正在保存');
     }
     setAppearanceDraft(null);
     setDialog(null);
@@ -615,6 +635,13 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
     setSaveErrorMessage('');
     setStatusBoth('saved');
     showToast('已重新加载远端版本');
+  }
+
+  async function goBack() {
+    if (!onBack) return;
+    const revision = await ensureSaved();
+    if (revision == null && !window.confirm('当前修改尚未保存，仍要返回简历库吗？')) return;
+    onBack();
   }
 
   async function logout() {
@@ -778,6 +805,7 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
         await api.deleteResume(activeResume.id);
         const list = await api.listResumes(); setResumeList(list);
         localStorage.removeItem(`resume-do:active:${user.id}`);
+        if (onBack) { onBack(); return; }
         if (list.length) activateResume(await api.getResume(list[0].id));
         else {
           if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -843,6 +871,11 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   if (!activeResume || originalView || resumeViewKind(activeResume) === 'original') {
     return <div className="app-shell original-shell">
       <header className="topbar">
+        {onBack && (
+          <button type="button" className="back-button" onClick={() => void goBack()} aria-label="返回简历库" title="返回简历库">
+            ‹
+          </button>
+        )}
         <div className="logo">Resume Do · 简历工作台</div>
         <select aria-label="切换简历" value={originalView ? `${activeResumeId}:original` : activeResumeId} disabled={!resumeList.length || deleting} onChange={e => void switchResume(e.target.value)}>
           {!resumeList.length && <option value="">暂无简历</option>}
@@ -883,6 +916,11 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
   return (
     <div className="app-shell">
       <header className="topbar">
+        {onBack && (
+          <button type="button" className="back-button" onClick={() => void goBack()} aria-label="返回简历库" title="返回简历库">
+            ‹
+          </button>
+        )}
         <div className="logo">
           <span>简</span>Resume Do · 简历工作台
         </div>
@@ -905,6 +943,14 @@ export default function EditorPage({ user, onLogout }: { user: User; onLogout: (
           </button>
         )}
         <OriginalImportButton beforeUpload={async () => !deleting && await ensureSaved() != null} onCreated={originalCreated} targetId={activeResumeId} />
+        {activeResume.source && (
+          <button type="button" disabled={deleting} onClick={() => void switchResume(`${activeResumeId}:original`)}>
+            查看原件
+          </button>
+        )}
+        <button type="button" className="danger-text" disabled={deleting} onClick={() => void deleteCurrent()}>
+          删除
+        </button>
         <button type="button" disabled={deleting} onClick={() => setConfirmClear(true)}>清空内容</button>
         <ThemeToggle />
         <span className="user-chip" title={user.email}>

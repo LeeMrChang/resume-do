@@ -15,8 +15,17 @@ public class ImportMapper {
         Map.entry("项目经验", "project"), Map.entry("项目经历", "project"),
         Map.entry("专业技能", "skills"), Map.entry("技能", "skills"), Map.entry("技能特长", "skills"),
         Map.entry("自我评价", "evaluation"), Map.entry("个人评价", "evaluation"),
+        Map.entry("报考信息", "application"), Map.entry("报考岗位", "application"), Map.entry("公考信息", "application"),
+        Map.entry("实习经验", "intern"), Map.entry("实习经历", "intern"), Map.entry("实习", "intern"),
+        Map.entry("校园经历", "campus"), Map.entry("校园活动", "campus"), Map.entry("在校经历", "campus"),
+        Map.entry("校园实践", "campus"),
+        Map.entry("荣誉证书", "honor"), Map.entry("荣誉奖项", "honor"), Map.entry("获奖情况", "honor"),
+        Map.entry("获奖荣誉", "honor"), Map.entry("荣誉", "honor"), Map.entry("证书", "honor"),
+        Map.entry("兴趣爱好", "hobby"), Map.entry("个人爱好", "hobby"), Map.entry("爱好", "hobby"),
         Map.entry("基本信息", "basic"), Map.entry("个人信息", "basic"), Map.entry("求职意向", "intent"));
-    private static final List<String> SECTION_ORDER = List.of("education", "work", "skills", "project", "evaluation");
+    private static final List<String> SECTION_ORDER = List.of(
+        "application", "education", "work", "skills", "project", "intern", "campus", "honor", "evaluation", "hobby");
+    private static final List<String> RECORD_SECTIONS = List.of("education", "work", "project", "intern", "campus");
     private static final Pattern RANGE = Pattern.compile("(\\d{4})[./年-](0?[1-9]|1[0-2])月?\\s*(?:[-—–~～至]|到)+\\s*(?:(\\d{4})[./年-](0?[1-9]|1[0-2])月?|(至今|现在|今))");
     private static final Pattern BULLET = Pattern.compile("^(?:[·•▪◦●○]|[-*]\\s+|\\d{1,2}[.、)）]\\s*).*");
     private static final Pattern LABEL_LINE = Pattern.compile("^.{1,24}[:：]$");
@@ -86,7 +95,7 @@ public class ImportMapper {
         for (String id : SECTION_ORDER) {
             var section = sections.addObject(); section.put("id", id);
             section.put("title", titles.getOrDefault(id, title(id))); section.put("visible", true);
-            boolean records = List.of("education", "work", "project").contains(id);
+            boolean records = RECORD_SECTIONS.contains(id);
             section.put("type", records ? "records" : "rich"); var items = section.putArray("items");
             if (records) {
                 ObjectNode active = null;
@@ -261,5 +270,5 @@ public class ImportMapper {
     }
     private String month(String year, String month) { return year + "-" + String.format("%02d", Integer.parseInt(month)); }
     private String html(String text) { return "<p>" + text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;") + "</p>"; }
-    private String title(String id) { return switch (id) { case "education" -> "教育背景"; case "work" -> "工作经验"; case "project" -> "项目经验"; case "skills" -> "专业技能"; default -> "自我评价"; }; }
+    private String title(String id) { return switch (id) { case "education" -> "教育背景"; case "work" -> "工作经验"; case "project" -> "项目经验"; case "skills" -> "专业技能"; case "application" -> "报考信息"; case "intern" -> "实习经验"; case "campus" -> "校园经历"; case "honor" -> "荣誉证书"; case "hobby" -> "兴趣爱好"; default -> "自我评价"; }; }
 }

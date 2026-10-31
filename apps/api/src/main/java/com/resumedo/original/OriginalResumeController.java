@@ -29,5 +29,7 @@ public class OriginalResumeController {
             .cacheControl(CacheControl.noStore()).body(new FileSystemResource(source.path()));
     }
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String id,Authentication user) { service.delete(owner(user),id); }
+    public void delete(@PathVariable String id,@RequestParam(defaultValue="0") int purge,Authentication user) {
+        if(purge==1) service.purge(owner(user),id); else service.delete(owner(user),id);
+    }
 }

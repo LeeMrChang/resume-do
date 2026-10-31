@@ -79,7 +79,11 @@ class ImportServiceTest {
         when(jobs.find(1, "one", false)).thenReturn(Optional.of(job("one", 1, "ready", null)));
         when(jobs.save(eq(1L), eq("one"), eq(3L), anyString())).thenReturn(1);
         var draft = new ImportMapper(json).draft("自我评价\n待编辑", "x.pdf");
-        ((com.fasterxml.jackson.databind.node.ObjectNode) draft.path("document").path("sections").get(4).path("items").get(0))
+        com.fasterxml.jackson.databind.JsonNode evaluation = null;
+        for (var entry : draft.path("document").path("sections")) {
+            if ("evaluation".equals(entry.path("id").asText())) evaluation = entry;
+        }
+        ((com.fasterxml.jackson.databind.node.ObjectNode) evaluation.path("items").get(0))
             .put("body", "<p onclick='x()'>正文</p><img src=x onerror='alert(1)'><script>bad()</script>");
         service.save(1, "one", new ImportService.SaveRequest(3, draft));
         var argument = org.mockito.ArgumentCaptor.forClass(String.class);

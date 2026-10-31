@@ -19,6 +19,7 @@ export interface ResumeSummary {
   revision: number;
   templateId: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export interface ResumeResponse {
@@ -154,7 +155,14 @@ export const api = {
     return request<ResumeResponse>('/api/resumes/originals', { method: 'POST', body });
   },
   deleteResume: (id: string) => request<void>(`/api/resumes/${id}`, { method: 'DELETE' }),
-  listResumes: () => request<ResumeSummary[]>('/api/resumes'),
+  purgeResume: (id: string) => request<void>(`/api/resumes/${id}?purge=1`, { method: 'DELETE' }),
+  restoreResume: (id: string) => request<ResumeResponse>(`/api/resumes/${id}/restore`, { method: 'POST' }),
+  listResumes: (deleted = false) => request<ResumeSummary[]>(`/api/resumes${deleted ? '?deleted=1' : ''}`),
+  renameResume: (id: string, baseRevision: number, title: string) =>
+    request<ResumeResponse>(`/api/resumes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ baseRevision, clientMutationId: crypto.randomUUID(), title }),
+    }),
   getResume: (id: string) => request<ResumeResponse>(`/api/resumes/${id}`),
   createResume: (payload: {
     title: string;

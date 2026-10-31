@@ -6,7 +6,9 @@ import {
   ALL_TEMPLATE_IDS,
   createDefaultAppearance,
   createDefaultDocument,
+  createSampleDocument,
   ensureCanonicalSections,
+  isBlankDocument,
   safeParseAppearance,
   safeParseDocument,
 } from './index';
@@ -21,6 +23,35 @@ test('default document lists every canonical module in tab order', () => {
   assert.deepEqual(doc.sections.map((section) => section.id), CANONICAL_SECTION_IDS);
   assert.equal(doc.moduleDefaultsApplied, true);
   assert.equal(safeParseDocument(doc).success, true);
+});
+
+test('blank documents can be seeded with a detached sample copy', () => {
+  assert.equal(isBlankDocument(createDefaultDocument()), true);
+  assert.equal(isBlankDocument(SAMPLE_DOCUMENT), false);
+
+  const seeded = createSampleDocument();
+  assert.equal(safeParseDocument(seeded).success, true);
+  assert.equal(seeded.sections[0].id, 'application', 'missing canonical modules are filled in');
+  assert.ok(seeded.sections.some((section) => section.id === 'education'));
+
+  seeded.basic.name = '张三';
+  seeded.sections[1].items[0].title = '我的学校';
+  assert.equal(SAMPLE_DOCUMENT.basic.name, '林晓', 'sample constant must stay untouched');
+  assert.notEqual(SAMPLE_DOCUMENT.sections[1].items[0].title, '我的学校');
+});
+
+test('documents with typed content are not blank', () => {
+  const withName = createDefaultDocument();
+  withName.basic.name = '张三';
+  assert.equal(isBlankDocument(withName), false);
+
+  const withIntent = createDefaultDocument();
+  withIntent.intent.role = '后端工程师';
+  assert.equal(isBlankDocument(withIntent), false);
+
+  const withBody = createDefaultDocument();
+  withBody.sections[1].items[0].body = '<p>做过一个小项目。</p>';
+  assert.equal(isBlankDocument(withBody), false);
 });
 
 test('ensureCanonicalSections adds missing modules once without reordering existing ones', () => {

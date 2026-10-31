@@ -112,6 +112,8 @@ test('theme switch defaults to dark, persists per user, follows the system and k
 
     await page.goto(base);
     await page.locator('.app-shell .topbar').waitFor();
+    await page.locator('.resume-card .card-open').first().click();
+    await page.locator('.canvas').waitFor();
 
     // THM-D1: a first-time visitor gets dark even when the OS prefers light.
     assert.equal(await theme(), 'dark');
