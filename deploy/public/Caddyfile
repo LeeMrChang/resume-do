@@ -1,0 +1,41 @@
+{
+    admin 127.0.0.1:2019
+    servers {
+        protocols h1 h2
+    }
+}
+
+(site_headers) {
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=86400"
+    }
+    encode zstd gzip
+}
+
+xiachen.xyz {
+    import site_headers
+    root * /srv
+    file_server
+}
+
+api.xiachen.xyz, cost.xiachen.xyz {
+    import site_headers
+    handle / {
+        root * /srv
+        rewrite * /cost.html
+        file_server
+    }
+    handle {
+        reverse_proxy 127.0.0.1:8080
+    }
+}
+
+resume.xiachen.xyz {
+    import site_headers
+    reverse_proxy 127.0.0.1:8081 {
+        # Application cookies stay host-only; add transport protection at the TLS edge.
+        header_down Set-Cookie "^(.*)$" "$1; Secure"
+    }
+}
