@@ -1,0 +1,67 @@
+name: Shared public HTTPS gateway
+on:
+  push:
+    branches: [main, feat/shared-public-domain]
+    paths:
+      - 'deploy/public/**'
+      - 'scripts/deploy-public-entry.sh'
+      - '.github/workflows/public-entry.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: xiachen-public-gateway
+  cancel-in-progress: false
+jobs:
+  gateway:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate gateway configuration
+        run: |
+          set -euo pipefail
+          bash -n scripts/deploy-public-entry.sh
+          docker compose -f deploy/public/compose.yaml config --quiet
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --tmpfs /tmp --tmpfs /data --tmpfs /config \
+            -v "$PWD/deploy/public/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Deploy isolated shared HTTPS entry
+        env:
+          DEPLOY_HOST: ${{ secrets.RESUME_DO_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.RESUME_DO_DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.RESUME_DO_DEPLOY_PORT }}
+          DEPLOY_KEY: ${{ secrets.RESUME_DO_DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.RESUME_DO_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch=$(mktemp -d)
+          trap 'rm -rf "$scratch"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$scratch/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$scratch/known_hosts"
+          options=(-i "$scratch/key" -o IdentitiesOnly=yes -o BatchMode=yes
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$scratch/known_hosts"
+            -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=10
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          tar -czf "$scratch/gateway.tar.gz" -C deploy/public Caddyfile compose.yaml site/index.html site/cost.html
+          ssh "${options[@]}" -p "${DEPLOY_PORT:-22}" "$remote" 'umask 077; mkdir -p /home/ubuntu/xiachen-public/incoming'
+          scp "${options[@]}" -P "${DEPLOY_PORT:-22}" "$scratch/gateway.tar.gz" "$remote:/home/ubuntu/xiachen-public/incoming/$GITHUB_SHA.tar.gz"
+          ssh "${options[@]}" -p "${DEPLOY_PORT:-22}" "$remote" "bash -s -- '$GITHUB_SHA'" < scripts/deploy-public-entry.sh
+      - name: Verify public HTTPS routes
+        run: |
+          set -euo pipefail
+          for host in xiachen.xyz api.xiachen.xyz cost.xiachen.xyz resume.xiachen.xyz; do
+            curl --fail --silent --show-error --retry 3 --connect-timeout 10 --max-time 20 "https://$host/" -o /dev/null
+            test "$(curl -sS -o /dev/null -w '%{http_code}' "http://$host/")" = 308
+          done
+          curl -fsS https://api.xiachen.xyz/health
+          curl -fsS https://cost.xiachen.xyz/health
+          curl -fsS https://resume.xiachen.xyz/api/health
+          test "$(curl -sS -o /dev/null -w '%{http_code}' https://api.xiachen.xyz/api/v1/entries)" = 401
+          test "$(curl -sS -o /dev/null -w '%{http_code}' https://resume.xiachen.xyz/api/resumes)" = 401
+          echo 'PASS: public certificates, HTTP redirects, upstream routing and unauthenticated access boundaries.'
