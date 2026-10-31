@@ -76,6 +76,21 @@ PYREFS
   trap - EXIT
 elif [[ -f "$release/source.tar.gz" ]]; then
   bash "$release/scripts/build-cloud.sh" "$release" "$RESUME_DO_IMAGE_TAG"
+  if [[ -n "${RESUME_DO_REGISTRY_PASSWORD:-}" ]]; then
+    # Seed/cache production images inside China instead of uploading large layers from overseas.
+    registry_auth=$(mktemp -d "$root/registry-auth.XXXXXX")
+    trap 'rm -rf "$registry_auth"' EXIT
+    DOCKER+=(--config "$registry_auth")
+    printf '%s' "$RESUME_DO_REGISTRY_PASSWORD" | "${DOCKER[@]}" login ccr.ccs.tencentyun.com --username 100054079705 --password-stdin
+    unset RESUME_DO_REGISTRY_PASSWORD
+    for service in api worker web; do
+      target="ccr.ccs.tencentyun.com/leemrchang-resume-do/resume-$service:$RESUME_DO_IMAGE_TAG"
+      "${DOCKER[@]}" tag "resume-$service:$RESUME_DO_IMAGE_TAG" "$target"
+      "${DOCKER[@]}" push "$target"
+    done
+    rm -rf "$registry_auth"
+    trap - EXIT
+  fi
 else
   gzip -dc "$release/images.tar.gz" | "${DOCKER[@]}" load >/dev/null
 fi
