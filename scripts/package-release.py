@@ -51,10 +51,24 @@ def digest(path):
     return value.hexdigest()
 
 
-def package(root, images, release, output, source=None):
+def validate_image_refs(path):
+    refs = json.loads(path.read_text())
+    if set(refs) != {'api', 'worker', 'web'}:
+        raise ValueError('Expected exactly api, worker and web image references')
+    for service, ref in refs.items():
+        if not isinstance(ref, str) or not re.fullmatch(
+            r'ccr\.ccs\.tencentyun\.com/[a-z0-9][a-z0-9._-]*/resume-' + service + r'@sha256:[a-f0-9]{64}', ref):
+            raise ValueError('Invalid immutable registry image reference')
+    return refs
+
+
+def package(root, images, release, output, source=None, registry_refs=None):
     validate_release(release)
     inputs = {name: root / name for name in PAYLOAD}
-    if source is not None:
+    if registry_refs is not None:
+        validate_image_refs(registry_refs)
+        inputs['images.json'] = registry_refs
+    elif source is not None:
         inputs['source.tar.gz'] = source
         inputs['scripts/build-cloud.sh'] = root / 'scripts/build-cloud.sh'
     else:
@@ -78,11 +92,14 @@ if __name__ == '__main__':
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--images', type=Path)
     mode.add_argument('--source', action='store_true')
+    mode.add_argument('--registry-refs', type=Path)
     parser.add_argument('--release', required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    if args.source:
+    if args.registry_refs:
+        package(root, None, args.release, args.output, registry_refs=args.registry_refs)
+    elif args.source:
         with tempfile.TemporaryDirectory() as scratch:
             source = Path(scratch) / 'source.tar.gz'
             source_archive(root, source)

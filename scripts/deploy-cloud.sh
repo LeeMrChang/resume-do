@@ -19,7 +19,8 @@ source_allowed = (allowed - {'images.tar.gz'}) | {'source.tar.gz', 'scripts/buil
 with tarfile.open(source, 'r:') as archive:
     members = archive.getmembers()
     names = [member.name for member in members]
-    if set(names) not in (allowed, source_allowed) or len(names) != len(set(names)):
+    registry_allowed = (allowed - {'images.tar.gz'}) | {'images.json'}
+    if set(names) not in (allowed, source_allowed, registry_allowed) or len(names) != len(set(names)):
         raise SystemExit('Unexpected deployment archive files')
     allowed = set(names)
     if any(not member.isfile() or member.size > 4 * 1024**3 or member.size < 0 for member in members):
@@ -50,7 +51,30 @@ compose() {
 }
 printf 'RESUME_DO_IMAGE_TAG=%s\n' "$RESUME_DO_IMAGE_TAG" > "$release/image.env"
 compose config --quiet
-if [[ -f "$release/source.tar.gz" ]]; then
+if [[ -f "$release/images.json" ]]; then
+  # Validate all references before contacting the registry or stopping any service.
+  python3 - "$release/images.json" > "$release/image-refs.tsv" <<'PYREFS'
+import json, re, sys
+refs = json.load(open(sys.argv[1]))
+if set(refs) != {'api', 'worker', 'web'}: raise SystemExit('Unexpected registry services')
+for service, ref in refs.items():
+    if not isinstance(ref, str) or not re.fullmatch(r'ccr\.ccs\.tencentyun\.com/[a-z0-9][a-z0-9._-]*/resume-' + service + r'@sha256:[a-f0-9]{64}', ref):
+        raise SystemExit('Invalid immutable registry reference')
+for service, ref in refs.items(): print(service, ref, sep='\t')
+PYREFS
+  : "${RESUME_DO_REGISTRY_PASSWORD:?Missing registry password}"
+  registry_auth=$(mktemp -d "$root/registry-auth.XXXXXX")
+  trap 'rm -rf "$registry_auth"' EXIT
+  DOCKER+=(--config "$registry_auth")
+  printf '%s' "$RESUME_DO_REGISTRY_PASSWORD" | "${DOCKER[@]}" login ccr.ccs.tencentyun.com --username 100054079705 --password-stdin
+  unset RESUME_DO_REGISTRY_PASSWORD
+  while IFS=$'\t' read -r service reference; do
+    "${DOCKER[@]}" pull "$reference"
+    "${DOCKER[@]}" tag "$reference" "resume-$service:$RESUME_DO_IMAGE_TAG"
+  done < "$release/image-refs.tsv"
+  rm -rf "$registry_auth"
+  trap - EXIT
+elif [[ -f "$release/source.tar.gz" ]]; then
   bash "$release/scripts/build-cloud.sh" "$release" "$RESUME_DO_IMAGE_TAG"
 else
   gzip -dc "$release/images.tar.gz" | "${DOCKER[@]}" load >/dev/null

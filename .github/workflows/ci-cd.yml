@@ -112,12 +112,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOY_HOST: ${{ secrets.RESUME_DO_DEPLOY_HOST }}
+          REGISTRY_PASSWORD: ${{ secrets.RESUME_DO_REGISTRY_PASSWORD }}
         run: |
           set -euo pipefail
           if [[ -z "$DEPLOY_HOST" ]]; then
             echo 'CI passed. Deployment is not connected: run scripts/setup-cicd.sh.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          : "${REGISTRY_PASSWORD:?Configure RESUME_DO_REGISTRY_PASSWORD before deploying}"
           latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
           if [[ "$latest" == "$GITHUB_SHA" ]]; then echo 'deploy=true' >> "$GITHUB_OUTPUT"; fi
       - name: Build immutable linux/amd64 images on runner
@@ -146,16 +148,36 @@ jobs:
             exit 1
           fi
           python3 scripts/smoke-cloud.py --base http://127.0.0.1:8081
-      - name: Package source for server build after release container verification
+      - name: Publish verified images to domestic private registry
         if: steps.current.outputs.deploy == 'true'
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.RESUME_DO_REGISTRY_PASSWORD }}
         run: |
           set -euo pipefail
+          : "${REGISTRY_PASSWORD:?Configure RESUME_DO_REGISTRY_PASSWORD in repository Actions secrets}"
+          export DOCKER_CONFIG=$(mktemp -d "$RUNNER_TEMP/resume-registry.XXXXXX")
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$REGISTRY_PASSWORD" | docker login ccr.ccs.tencentyun.com --username 100054079705 --password-stdin
           release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          docker save "resume-api:ci-$release" "resume-worker:ci-$release" "resume-web:ci-$release" | gzip -1 > "$RUNNER_TEMP/resume-images.tar.gz"; python3 scripts/package-release.py --images "$RUNNER_TEMP/resume-images.tar.gz" \
+          prefix=ccr.ccs.tencentyun.com/leemrchang-resume-do
+          for service in api worker web; do
+            image="$prefix/resume-$service:ci-$release"
+            docker tag "resume-$service:ci-$release" "$image"
+            docker push "$image"
+            docker image inspect "$image" --format '{{index .RepoDigests 0}}' > "$RUNNER_TEMP/resume-$service.ref"
+          done
+          python3 - "$RUNNER_TEMP" <<'PYREFS'
+          import json, pathlib, sys
+          base = pathlib.Path(sys.argv[1])
+          refs = {s: (base / ('resume-' + s + '.ref')).read_text().strip() for s in ('api', 'worker', 'web')}
+          (base / 'resume-images.json').write_text(json.dumps(refs))
+          PYREFS
+          python3 scripts/package-release.py --registry-refs "$RUNNER_TEMP/resume-images.json" \
             --release "$release" --output "$RUNNER_TEMP/resume-release.tar"
       - name: Upload and deploy over verified SSH
         if: steps.current.outputs.deploy == 'true'
         env:
+          RESUME_DO_REGISTRY_PASSWORD: ${{ secrets.RESUME_DO_REGISTRY_PASSWORD }}
           DEPLOY_HOST: ${{ secrets.RESUME_DO_DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.RESUME_DO_DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.RESUME_DO_DEPLOY_PORT }}
@@ -181,10 +203,11 @@ jobs:
             -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
           release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          echo "Uploading source release ($(stat -c %s "$RUNNER_TEMP/resume-release.tar") bytes)"
+          echo "Uploading registry release manifest ($(stat -c %s "$RUNNER_TEMP/resume-release.tar") bytes)"
           scp -v "${options[@]}" -P "$DEPLOY_PORT" "$RUNNER_TEMP/resume-release.tar" \
             "$remote:/home/ubuntu/resume-do/incoming/$release.tar"
-          echo 'Source upload complete; building and deploying on server.'
-          ssh "${options[@]}" -p "$DEPLOY_PORT" "$remote" \
-            "bash -s -- '$release' /home/ubuntu/resume-do" < scripts/deploy-cloud.sh
+          echo 'Manifest upload complete; pulling verified images from domestic registry.'
+          { printf '%s\n' "$RESUME_DO_REGISTRY_PASSWORD"; cat scripts/deploy-cloud.sh; } | \
+            ssh "${options[@]}" -p "$DEPLOY_PORT" "$remote" \
+              "IFS= read -r RESUME_DO_REGISTRY_PASSWORD; export RESUME_DO_REGISTRY_PASSWORD; bash -s -- '$release' /home/ubuntu/resume-do"
           echo "Deployed $GITHUB_SHA. SSH tunnel endpoint: http://localhost:8081" >> "$GITHUB_STEP_SUMMARY"
