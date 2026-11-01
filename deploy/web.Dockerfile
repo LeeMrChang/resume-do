@@ -16,7 +16,8 @@ COPY scripts/copy-pdf-assets.mjs scripts/copy-pdf-assets.mjs
 RUN npm run build -w @resume-do/web
 
 FROM ${NGINX_IMAGE}
-LABEL org.opencontainers.image.title="Resume Do Web"
+LABEL org.opencontainers.image.title="Resume Do Web" \
+      org.opencontainers.image.description="Resume editor web frontend"
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
