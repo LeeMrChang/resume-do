@@ -13,7 +13,7 @@ PAYLOAD = ('deploy/compose.cloud.yaml', 'scripts/backup-cloud.sh')
 SOURCE_FILES = ('package.json', 'package-lock.json', 'tsconfig.base.json', '.dockerignore',
                 'apps/api/pom.xml', 'apps/web/package.json', 'apps/web/index.html',
                 'apps/web/tsconfig.json', 'apps/web/vite.config.ts', 'apps/pdf-worker/package.json',
-                'scripts/copy-pdf-assets.mjs', 'deploy/api.Dockerfile', 'deploy/web.Dockerfile',
+                'scripts/copy-pdf-assets.mjs', 'scripts/smoke-cloud.py', 'scripts/isolate-compose.py', 'deploy/api.Dockerfile', 'deploy/web.Dockerfile',
                 'deploy/worker.Dockerfile', 'deploy/nginx.conf', 'deploy/worker-health.mjs',
                 'deploy/maven-settings.xml')
 SOURCE_DIRS = ('apps/api/src/main', 'apps/web/src', 'apps/web/public',
@@ -62,7 +62,7 @@ def validate_image_refs(path):
     return refs
 
 
-def package(root, images, release, output, source=None, registry_refs=None):
+def package(root, images, release, output, source=None, registry_refs=None, plan=None):
     validate_release(release)
     inputs = {name: root / name for name in PAYLOAD}
     if registry_refs is not None:
@@ -73,6 +73,8 @@ def package(root, images, release, output, source=None, registry_refs=None):
         inputs['scripts/build-cloud.sh'] = root / 'scripts/build-cloud.sh'
     else:
         inputs['images.tar.gz'] = images
+    if plan is not None:
+        inputs['plan.json'] = plan
     for path in inputs.values():
         if path.is_symlink() or not path.is_file():
             raise ValueError('Missing or symlinked release input')
@@ -93,17 +95,18 @@ if __name__ == '__main__':
     mode.add_argument('--images', type=Path)
     mode.add_argument('--source', action='store_true')
     mode.add_argument('--registry-refs', type=Path)
+    parser.add_argument('--plan', type=Path)
     parser.add_argument('--release', required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     if args.registry_refs:
-        package(root, None, args.release, args.output, registry_refs=args.registry_refs)
+        package(root, None, args.release, args.output, registry_refs=args.registry_refs, plan=args.plan)
     elif args.source:
         with tempfile.TemporaryDirectory() as scratch:
             source = Path(scratch) / 'source.tar.gz'
             source_archive(root, source)
-            package(root, None, args.release, args.output, source=source)
+            package(root, None, args.release, args.output, source=source, plan=args.plan)
     else:
-        package(root, args.images, args.release, args.output)
+        package(root, args.images, args.release, args.output, plan=args.plan)
     print(f'Release bundle: {args.output.stat().st_size:,} bytes')

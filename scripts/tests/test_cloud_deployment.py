@@ -101,7 +101,7 @@ class CloudDeploymentTests(unittest.TestCase):
             result = subprocess.run(['bash', '-n', str(ROOT / 'scripts' / name)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def deployment(self, fail_stage, source_mode=False, registry_mode=False):
+    def deployment(self, fail_stage, source_mode=False, registry_mode=False, selected=None, baseline_mismatch=False, migration=False, legacy_baseline=False):
         """Run the real release state machine against isolated executable substitutes."""
         import textwrap
         scratch = tempfile.TemporaryDirectory()
@@ -148,6 +148,24 @@ class CloudDeploymentTests(unittest.TestCase):
         images.write_bytes(gzip.compress(b'fake-image-load-stream'))
         release = 'a' * 40 + '-1-1'
         module = self.packager()
+        planned = None
+        if selected is not None:
+            old = root / 'releases' / ('b' * 40 + '-1-1')
+            (old / 'deploy').mkdir(parents=True)
+            (old / 'deploy/compose.cloud.yaml').write_bytes((ROOT / 'deploy/compose.cloud.yaml').read_bytes())
+            (old / 'image.env').write_text('RESUME_DO_IMAGE_TAG=ci-' + old.name + '\n')
+            (old / 'SUCCESS').touch()
+            (root / 'current').symlink_to(old)
+            fp = {k: 'c' * 64 for k in ('api', 'worker', 'web', 'migrations')}
+            (old / 'plan.json').write_text(json.dumps({'fingerprints': fp}))
+            if legacy_baseline: (old / 'plan.json').unlink()
+            next_fp = {**fp}
+            for service in selected: next_fp[service] = 'd' * 64
+            if baseline_mismatch: next_fp['api'] = 'e' * 64
+            if migration: next_fp['migrations'] = 'f' * 64
+            planned = base / 'plan.json'
+            planned.write_text(json.dumps({'services': selected, 'fingerprints': next_fp,
+                                          'migrations': migration, 'commit': 'a' * 40}))
         if registry_mode:
             refs = base / 'images.json'
             refs.write_text(json.dumps({s: 'ccr.ccs.tencentyun.com/test/resume-' + s + '@sha256:' + 'a' * 64 for s in ('api', 'worker', 'web')}))
@@ -165,7 +183,7 @@ class CloudDeploymentTests(unittest.TestCase):
             source.write_bytes(gzip.compress(b'fake-source'))
             module.package(payload_root, None, release, root / 'incoming' / (release + '.tar'), source=source)
         else:
-            module.package(ROOT, images, release, root / 'incoming' / (release + '.tar'))
+            module.package(ROOT, images, release, root / 'incoming' / (release + '.tar'), plan=planned)
         env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
                'FAKE_LOG': str(base / 'commands.jsonl'), 'FAIL_STAGE': fail_stage,
                'RESUME_DO_REGISTRY_PASSWORD': 'test-only-password'}
@@ -174,6 +192,79 @@ class CloudDeploymentTests(unittest.TestCase):
         log = base / 'commands.jsonl'
         commands = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
         return result, commands, root
+
+    def test_web_only_release_never_restarts_api_worker_or_backs_up_database(self):
+        result, commands, root = self.deployment('none', selected=['web'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        updates = [c for c in commands if 'up' in c]
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0][-1], 'resume-web')
+        self.assertFalse(any('stop' in c or 'mysqldump' in ' '.join(c) for c in commands))
+        env = (root / 'current/image.env').read_text()
+        self.assertIn('RESUME_DO_API_IMAGE=resume-api:ci-' + 'b' * 40, env)
+        self.assertIn('RESUME_DO_WEB_IMAGE=resume-web:ci-' + 'a' * 40, env)
+
+    def test_worker_only_release_updates_worker(self):
+        result, commands, _ = self.deployment('none', selected=['worker'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c[-1] for c in commands if 'up' in c], ['resume-worker'])
+
+    def test_api_only_release_reloads_nginx_without_recreating_web(self):
+        result, commands, _ = self.deployment('none', selected=['api'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c[-1] for c in commands if 'up' in c], ['resume-api'])
+        self.assertTrue(any(c[-3:] == ['nginx', '-s', 'reload'] for c in commands))
+
+    def test_partial_failure_rolls_back_only_selected_service(self):
+        result, commands, root = self.deployment('api', selected=['api'])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([c[-1] for c in commands if 'up' in c], ['resume-api', 'resume-api'])
+        self.assertEqual((root / 'current').resolve().name, 'b' * 40 + '-1-1')
+        self.assertFalse(any('stop' in c for c in commands))
+
+    def test_baseline_mismatch_fails_before_application_changes(self):
+        result, commands, _ = self.deployment('none', selected=['web'], baseline_mismatch=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('baseline changed', result.stderr)
+        self.assertFalse(any('up' in c or 'stop' in c or 'load' in c for c in commands))
+
+    def test_migration_rejects_partial_release(self):
+        result, commands, _ = self.deployment('none', selected=['api'], migration=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('coordinated full release', result.stderr)
+        self.assertFalse(any('up' in c or 'stop' in c for c in commands))
+
+    def test_first_independent_release_preserves_full_migration_safety(self):
+        result, commands, root = self.deployment('none', selected=['api', 'worker', 'web'], legacy_baseline=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any('stop' in c and 'resume-api' in c for c in commands))
+        self.assertTrue(list((root / 'backups').glob('*/COMPLETE')))
+        self.assertEqual((root / 'current').resolve().name, 'a' * 40 + '-1-1')
+        self.assertTrue((root / 'current/plan.json').exists())
+
+    def test_isolated_verification_cannot_use_production_data_or_credentials(self):
+        import copy
+        spec = importlib.util.spec_from_file_location('isolation', ROOT / 'scripts/isolate-compose.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        config = {
+            'name': 'resume-do-cloud',
+            'volumes': {'files': {'name': 'production-files', 'external': True},
+                        'mysql': {'name': 'production-db'}},
+            'networks': {'default': {'name': 'production-network', 'external': True}},
+            'services': {
+                'resume-db': {'environment': {'MYSQL_PASSWORD': 'secret', 'MYSQL_ROOT_PASSWORD': 'root-secret'}},
+                'resume-api': {'environment': {'RESUME_DO_MAIL_PASSWORD': 'mail-secret', 'RESUME_DO_AI_API_KEY': 'ai-secret'}},
+                'resume-worker': {'environment': {'RESUME_DO_DB_PASSWORD': 'secret'}},
+                'resume-web': {'ports': [{'published': '8081'}]},
+            },
+        }
+        result = module.isolate(copy.deepcopy(config), 'verify-test')
+        self.assertTrue(all(v['name'].startswith('verify-test-') and 'external' not in v
+                            for group in ('volumes', 'networks') for v in result[group].values()))
+        self.assertNotIn('secret', json.dumps(result))
+        self.assertEqual(result['services']['resume-web']['ports'][0]['published'], '0')
+        self.assertEqual(result['services']['resume-api']['environment']['RESUME_DO_MAIL_ENABLED'], 'false')
 
     def test_registry_pull_failure_does_not_stop_application_and_removes_credentials(self):
         result, commands, root = self.deployment('pull', registry_mode=True)

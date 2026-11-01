@@ -158,3 +158,25 @@ Maven 加速：服务器构建显式传入 `https://mirrors.cloud.tencent.com/ne
 取消 Maven 静默输出，后续构建可直接看到阶段信息。预下载依赖仍位于独立 Docker 层，成功构建后 POM、镜像和 settings 未变时可复用该层；本次未迁移 BuildKit 或加入共享宿主机缓存。已开始的构建不会热切换镜像，须由包含新配置的发布触发。验证：13 项部署检查通过；Maven 3.9.16 离线 validate 退出码 0，实际解析出的 mirror URL 确认为腾讯云 HTTPS 地址；未在本机验证国内镜像下载速度。
 
 系统包加速：第 4 轮已完成 API 构建和 worker 的 npm 安装，随后在 Debian 索引下载处长时间停留。云端 worker 构建增加 `DEBIAN_MIRROR=mirrors.cloud.tencent.com`，替换容器中 Debian 主仓库和安全仓库的域名；保持 Bookworm 发行版、组件和 Signed-By 不变，不禁用签名校验，不修改宿主机源。GitHub Runner 默认仍使用 deb.debian.org。后续 Playwright `--with-deps` 会复用容器内已配置的 APT 源；Chromium 文件下载仍由 Playwright 官方源处理，国内网络速度尚待实测。
+
+
+## 2026-11-01 按服务增量发布
+
+仍使用一个仓库，API、Web、PDF worker 各自记录镜像版本。`ci-cd.yml` 首先比较本次代码与上一次成功的 main push 工作流，包含此前失败发布积累的改动；PR 与 main 的共同祖先比较。手动运行可选 `full=true` 强制全量。
+
+- `apps/web/**`、Web Dockerfile、Nginx 配置：只检查、构建并替换 Web。
+- `apps/api/**`、API Dockerfile、Maven 镜像配置：只发布 API；仍执行 API/Flyway/PDF 集成测试。
+- `apps/pdf-worker/**`、worker Dockerfile/健康脚本：只发布 worker；仍执行队列 PDF 集成测试。
+- `packages/templates/**`：Web + worker；`packages/schema/**`、根依赖锁、工作区清单、发布脚本和未知路径保守地检查全部服务。
+- 两个 Node 应用的 package.json 都是两个 Dockerfile 的 COPY 输入，因此这两个清单变更会触发 Web + worker。
+- 纯 README/docs/IDE 配置不发布业务容器；数据库迁移变更强制全量并保留停写、备份和迁移失败保护。
+
+不再在 GitHub 与服务器各构建一次镜像。GitHub 分服务并行做源码测试，服务器复用现有 Docker 层缓存，只构建与推送计划内的镜像。发布前验证实际候选镜像：Web 单独更新只做 Nginx 配置检查；涉及 API/worker 时，启动独立的临时 MySQL、文件卷和网络，使用“候选版本 + 未修改服务的线上版本”验证注册、保存与 PDF 下载，结束后仅清理这些临时资源。该验证要求至少 2 GiB 可用内存；内存不足会在切换线上服务前退出。
+
+`current/image.env` 保存 `RESUME_DO_API_IMAGE`、`RESUME_DO_WORKER_IMAGE`、`RESUME_DO_WEB_IMAGE`，未变更服务沿用之前的镜像。`current/plan.json` 保存实际部署的输入指纹：若流水线基线与线上状态不一致且会漏发某个服务，则拒绝部分发布；重新手动运行 `full=true` 恢复。首次启用这套机制必须全量建立基线，此后小改动才进入增量路径。
+
+无数据库迁移时，只替换选中容器；API 更换后重新加载 Nginx，以解析新的 API 容器 IP。健康检查失败时，恢复选中服务的旧镜像和旧 Compose 配置，其他服务不停止。跨服务接口或任务协议改动必须保持向后兼容；不兼容变更应使用协调维护发布，不依赖逐个容器切换实现原子更新。带 DDL 的发布继续使用原有停写/备份流程，迁移开始后不自动恢复旧 API。
+
+`Tests, build and isolated integration` 名称保留为汇总检查，兼容已有分支保护；未涉及的服务检查不运行。涉及同一次变更的多个服务仍以一组通过检查后发布，避免已知不兼容的半套版本上线。
+
+验证范围：发布脚本替身测试覆盖单服务发布、失败回退、旧版本首次升级、基线不一致、数据库迁移保护，以及临时验证资源隔离。真实 Docker/SSH/GitHub Actions 验收仍需在首次全量发布时确认。
