@@ -207,7 +207,7 @@ jobs:
   deploy:
     name: Build release images and deploy
     needs: [plan, checks]
-    if: needs.plan.outputs.any == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' && needs.plan.outputs.any == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     concurrency:
