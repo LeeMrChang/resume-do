@@ -162,7 +162,7 @@ Maven 加速：服务器构建显式传入 `https://mirrors.cloud.tencent.com/ne
 
 ## 2026-11-01 按服务增量发布
 
-仍使用一个仓库，API、Web、PDF worker 各自记录镜像版本。`ci-cd.yml` 首先比较本次代码与上一次成功的 main push 工作流，包含此前失败发布积累的改动；PR 与 main 的共同祖先比较。手动运行可选 `full=true` 强制全量。
+仍使用一个仓库，API、Web、PDF worker 各自记录镜像版本。`ci-cd.yml` 首先比较本次代码与上一次部署作业实际成功的 main push 工作流（跳过部署的运行不作为基线），包含此前失败发布积累的改动；PR 与 main 的共同祖先比较。手动运行可选 `full=true` 强制全量。
 
 - `apps/web/**`、Web Dockerfile、Nginx 配置：只检查、构建并替换 Web。
 - `apps/api/**`、API Dockerfile、Maven 镜像配置：只发布 API；仍执行 API/Flyway/PDF 集成测试。

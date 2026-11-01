@@ -13,6 +13,15 @@ SPEC.loader.exec_module(planner)
 
 
 class ReleasePlanTests(unittest.TestCase):
+    def test_deploy_condition_allows_intentionally_skipped_ancestors(self):
+        # GitHub otherwise injects success(), which propagates the skipped integration
+        # ancestor even though the always() aggregate check itself succeeds.
+        workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/ci-cd.yml').read_text()
+        condition = workflow.split('  deploy:', 1)[1].split('    runs-on:', 1)[0]
+        self.assertIn('!cancelled()', condition)
+        self.assertIn("needs.checks.result == 'success'", condition)
+        self.assertIn("needs.plan.outputs.any == 'true'", condition)
+
     def test_service_boundaries(self):
         for path, services in {
             'apps/web/src/App.tsx': {'web'},
