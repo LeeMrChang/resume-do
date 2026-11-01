@@ -35,6 +35,14 @@ public class ApiException extends RuntimeException {
         return new ApiException(HttpStatus.GONE, code, message, Map.of());
     }
 
+    public static ApiException tooManyRequests(String code, String message, Map<String, Object> details) {
+        return new ApiException(HttpStatus.TOO_MANY_REQUESTS, code, message, details);
+    }
+
+    public static ApiException serviceUnavailable(String code, String message) {
+        return new ApiException(HttpStatus.SERVICE_UNAVAILABLE, code, message, Map.of());
+    }
+
     public HttpStatus status() {
         return status;
     }

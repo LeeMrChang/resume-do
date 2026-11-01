@@ -5,9 +5,35 @@ import type {
 
 export interface User {
   id: number;
-  email: string;
+  email?: string;
+  phone?: string;
   displayName: string;
   themePreference?: 'light' | 'dark' | 'system';
+}
+
+export type RegisterChannel = 'email' | 'phone';
+
+export interface CaptchaChallenge {
+  captchaId: string;
+  question: string;
+  image: string;
+  expiresInSeconds: number;
+}
+
+export interface CaptchaPoint { x: number; y: number; }
+
+export interface VerificationCodeSent {
+  retryAfterSeconds: number;
+  expiresInSeconds: number;
+  devCode?: string;
+}
+
+export interface RegisterPayload {
+  channel: RegisterChannel;
+  target: string;
+  code: string;
+  password: string;
+  displayName: string;
 }
 
 export interface OriginalSource { filename: string; mime: string; bytes: number; pages: number | null; }
@@ -116,10 +142,18 @@ function json(body: unknown): RequestInit {
 
 export const api = {
   me: () => request<User>('/api/auth/me'),
-  login: (email: string, password: string) =>
-    request<User>('/api/auth/login', json({ email, password })),
-  register: (email: string, password: string, displayName: string) =>
-    request<User>('/api/auth/register', json({ email, password, displayName })),
+  login: (account: string, password: string) =>
+    request<User>('/api/auth/login', json({ account, password })),
+  register: (payload: RegisterPayload) =>
+    request<User>('/api/auth/register', json(payload)),
+  requestCaptcha: () => request<CaptchaChallenge>('/api/auth/captcha'),
+  verifyCaptcha: (captchaId: string, points: CaptchaPoint[]) =>
+    request<{ ticket: string; expiresInSeconds: number }>(
+      `/api/auth/captcha/${encodeURIComponent(captchaId)}/verify`,
+      json({ points }),
+    ),
+  sendVerificationCode: (channel: RegisterChannel, target: string, captchaTicket: string) =>
+    request<VerificationCodeSent>('/api/auth/verification-codes', json({ channel, target, captchaTicket })),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   updateThemePreference: (themePreference: 'light' | 'dark' | 'system') =>
     request<User>('/api/auth/me', {

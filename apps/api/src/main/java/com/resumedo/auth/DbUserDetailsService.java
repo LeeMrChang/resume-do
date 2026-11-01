@@ -16,9 +16,9 @@ public class DbUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        UserAccount account = users.findByEmail(username.trim().toLowerCase())
+        UserAccount account = users.findByAccount(username.trim().toLowerCase())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-        return User.withUsername(account.email())
+        return User.withUsername(account.loginName())
                 .password(account.passwordHash())
                 .roles("USER")
                 .build();

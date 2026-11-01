@@ -12,10 +12,11 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class UserRepository {
-    private static final String COLUMNS = "id, email, password_hash, display_name, theme_preference";
+    private static final String COLUMNS = "id, email, phone, password_hash, display_name, theme_preference";
     private static final RowMapper<UserAccount> MAPPER = (rs, rowNum) -> new UserAccount(
             rs.getLong("id"),
             rs.getString("email"),
+            rs.getString("phone"),
             rs.getString("password_hash"),
             rs.getString("display_name"),
             rs.getString("theme_preference"));
@@ -26,11 +27,12 @@ public class UserRepository {
         this.jdbc = jdbc;
     }
 
-    public Optional<UserAccount> findByEmail(String email) {
+    public Optional<UserAccount> findByAccount(String account) {
         List<UserAccount> users = jdbc.query(
-                "SELECT " + COLUMNS + " FROM users WHERE email = ?",
+                "SELECT " + COLUMNS + " FROM users WHERE email = ? OR phone = ?",
                 MAPPER,
-                email);
+                account,
+                account);
         return users.stream().findFirst();
     }
 
@@ -46,20 +48,25 @@ public class UserRepository {
         jdbc.update("UPDATE users SET theme_preference = ? WHERE id = ?", themePreference, id);
     }
 
-    public boolean existsByEmail(String email) {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE email = ?", Integer.class, email);
+    public boolean existsByAccount(String account) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE email = ? OR phone = ?",
+                Integer.class,
+                account,
+                account);
         return count != null && count > 0;
     }
 
-    public long insert(String email, String passwordHash, String displayName) {
+    public long insert(String email, String phone, String passwordHash, String displayName) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO users (email, password_hash, display_name, created_at) VALUES (?, ?, ?, NOW(3))",
+                    "INSERT INTO users (email, phone, password_hash, display_name, created_at) VALUES (?, ?, ?, ?, NOW(3))",
                     Statement.RETURN_GENERATED_KEYS);
             statement.setString(1, email);
-            statement.setString(2, passwordHash);
-            statement.setString(3, displayName);
+            statement.setString(2, phone);
+            statement.setString(3, passwordHash);
+            statement.setString(4, displayName);
             return statement;
         }, keyHolder);
         Number key = keyHolder.getKey();

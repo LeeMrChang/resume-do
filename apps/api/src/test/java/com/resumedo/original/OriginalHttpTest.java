@@ -16,7 +16,7 @@ class OriginalHttpTest {
  @TempDir Path root;
  @Test void sourceStreamsExactBytesWithUnicodeFilenameAndSafeHeaders() throws Exception {
   var service=mock(OriginalResumeService.class);var auth=mock(AuthService.class);
-  when(auth.current("test-user")).thenReturn(new UserAccount(9,"test@example.invalid","unused","test","dark"));
+  when(auth.current("test-user")).thenReturn(new UserAccount(9,"test@example.invalid",null,"unused","test","dark"));
   byte[] bytes="%PDF-original bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
   Path file=root.resolve("source.pdf");Files.write(file,bytes);
   when(service.source(9,"id",false)).thenReturn(new OriginalResumeService.Source(file,"中文😀.pdf",bytes.length));
@@ -33,7 +33,7 @@ class OriginalHttpTest {
  }
  @Test void unauthorizedOwnerErrorsArePreservedAs404AndDeleteIs204() throws Exception {
   var service=mock(OriginalResumeService.class);var auth=mock(AuthService.class);
-  when(auth.current("other")).thenReturn(new UserAccount(77,"other@example.invalid","unused","other","dark"));
+  when(auth.current("other")).thenReturn(new UserAccount(77,"other@example.invalid",null,"unused","other","dark"));
   when(service.source(77,"private",false)).thenThrow(ApiException.notFound("简历不存在"));
   doThrow(ApiException.notFound("简历不存在")).when(service).delete(77,"private");
   var mvc=MockMvcBuilders.standaloneSetup(new OriginalResumeController(service,auth)).setControllerAdvice(new GlobalExceptionHandler()).build();

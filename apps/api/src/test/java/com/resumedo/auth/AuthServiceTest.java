@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,37 +29,67 @@ class AuthServiceTest {
     private final UserRepository users = mock(UserRepository.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
-    private final AuthService service = new AuthService(users, passwordEncoder, authenticationManager);
+    private final VerificationService verification = mock(VerificationService.class);
+    private final AuthService service = new AuthService(users, passwordEncoder, authenticationManager, verification);
 
     @Test
-    void registerNormalizesEmailAndDerivesDisplayName() {
-        when(users.existsByEmail("alice@example.com")).thenReturn(false);
+    void registerVerifiesTheCodeAndDerivesDisplayNameFromEmail() {
+        when(users.existsByAccount("alice@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hash-1");
-        when(users.insert(eq("alice@example.com"), eq("hash-1"), anyString())).thenReturn(42L);
+        when(users.insert(eq("alice@example.com"), isNull(), eq("hash-1"), anyString())).thenReturn(42L);
         when(users.findById(42L)).thenReturn(Optional.of(
-                new UserAccount(42, "alice@example.com", "hash-1", "alice", "dark")));
+                new UserAccount(42, "alice@example.com", null, "hash-1", "alice", "dark")));
 
-        UserAccount account = service.register("  Alice@Example.com ", "password123", "   ");
+        UserAccount account = service.register(
+                "email", "  Alice@Example.com ", "123456", "password123", "   ");
 
+        verify(verification).consume("email", "alice@example.com", "123456");
         ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
-        verify(users).insert(eq("alice@example.com"), eq("hash-1"), name.capture());
+        verify(users).insert(eq("alice@example.com"), isNull(), eq("hash-1"), name.capture());
         assertThat(name.getValue()).isEqualTo("alice");
         assertThat(account.email()).isEqualTo("alice@example.com");
     }
 
     @Test
-    void registerRejectsDuplicateEmail() {
-        when(users.existsByEmail("bob@example.com")).thenReturn(true);
+    void registerNormalizesPhoneNumbersAndStoresNoEmail() {
+        when(users.existsByAccount("+8613800138000")).thenReturn(false);
+        when(passwordEncoder.encode("password123")).thenReturn("hash-2");
+        when(users.insert(isNull(), eq("+8613800138000"), eq("hash-2"), eq("用户8000"))).thenReturn(43L);
+        when(users.findById(43L)).thenReturn(Optional.of(
+                new UserAccount(43, null, "+8613800138000", "hash-2", "用户8000", "dark")));
 
-        assertThatThrownBy(() -> service.register("bob@example.com", "password123", "Bob"))
+        UserAccount account = service.register("phone", "138 0013 8000", "654321", "password123", null);
+
+        verify(verification).consume("phone", "+8613800138000", "654321");
+        assertThat(account.phone()).isEqualTo("+8613800138000");
+        assertThat(account.loginName()).isEqualTo("+8613800138000");
+    }
+
+    @Test
+    void registerRejectsInvalidTargetsBeforeRequestingACode() {
+        assertThatThrownBy(() -> service.register("email", "not-an-email", "123456", "password123", "Bob"))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("邮箱");
+        assertThatThrownBy(() -> service.register("phone", "12800138000", "123456", "password123", "Bob"))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("手机号");
+        verify(verification, never()).consume(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void registerRejectsDuplicateAccounts() {
+        when(users.existsByAccount("bob@example.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.register("email", "bob@example.com", "123456", "password123", "Bob"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(throwable -> {
                     ApiException error = (ApiException) throwable;
                     assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
-                    assertThat(error.code()).isEqualTo("EMAIL_EXISTS");
+                    assertThat(error.code()).isEqualTo("ACCOUNT_EXISTS");
                 });
 
-        verify(users, never()).insert(anyString(), anyString(), anyString());
+        verify(verification, never()).consume(anyString(), anyString(), anyString());
+        verify(users, never()).insert(any(), any(), anyString(), anyString());
     }
 
     @Test
@@ -77,15 +108,15 @@ class AuthServiceTest {
         Authentication authentication = mock(Authentication.class);
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
                 .thenReturn(authentication);
-        when(users.findByEmail("dave@example.com"))
-                .thenReturn(Optional.of(new UserAccount(9, "dave@example.com", "hash", "Dave", "dark")));
+        when(users.findByAccount("dave@example.com"))
+                .thenReturn(Optional.of(new UserAccount(9, "dave@example.com", null, "hash", "Dave", "dark")));
 
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpSession session = mock(HttpSession.class);
         when(request.getSession(false)).thenReturn(null);
         when(request.getSession(true)).thenReturn(session);
 
-        UserAccount account = service.login("dave@example.com", "password123", request);
+        UserAccount account = service.login(" Dave@Example.com ", "password123", request);
 
         verify(session).setAttribute(
                 eq(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY), any());
@@ -93,8 +124,25 @@ class AuthServiceTest {
     }
 
     @Test
-    void currentThrowsUnauthorizedForUnknownEmail() {
-        when(users.findByEmail("ghost@example.com")).thenReturn(Optional.empty());
+    void loginAcceptsPhoneAccounts() {
+        Authentication authentication = mock(Authentication.class);
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
+                .thenReturn(authentication);
+        when(users.findByAccount("+8613800138000"))
+                .thenReturn(Optional.of(new UserAccount(12, null, "+8613800138000", "hash", "用户8000", "dark")));
+
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getSession(false)).thenReturn(null);
+        when(request.getSession(true)).thenReturn(mock(HttpSession.class));
+
+        UserAccount account = service.login("138 0013 8000", "password123", request);
+
+        assertThat(account.phone()).isEqualTo("+8613800138000");
+    }
+
+    @Test
+    void currentThrowsUnauthorizedForUnknownAccount() {
+        when(users.findByAccount("ghost@example.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.current("ghost@example.com"))
                 .isInstanceOf(ApiException.class)
@@ -104,10 +152,10 @@ class AuthServiceTest {
 
     @Test
     void updateThemePreferencePersistsAndReturnsUpdatedAccount() {
-        when(users.findByEmail("eve@example.com"))
-                .thenReturn(Optional.of(new UserAccount(11, "eve@example.com", "hash", "Eve", "dark")));
+        when(users.findByAccount("eve@example.com"))
+                .thenReturn(Optional.of(new UserAccount(11, "eve@example.com", null, "hash", "Eve", "dark")));
         when(users.findById(11L))
-                .thenReturn(Optional.of(new UserAccount(11, "eve@example.com", "hash", "Eve", "light")));
+                .thenReturn(Optional.of(new UserAccount(11, "eve@example.com", null, "hash", "Eve", "light")));
 
         UserAccount updated = service.updateThemePreference(" Eve@Example.com ", "light");
 

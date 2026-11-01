@@ -189,6 +189,12 @@ Vite 会读取根目录 `.env` 中的 `RESUME_DO_WEB_PORT` 和 `RESUME_DO_API_PO
 | `RESUME_DO_DB_POOL_SIZE` | worker 连接池大小，4 |
 | `RESUME_DO_WORKER_ID` | worker 标识，默认主机名和进程号 |
 | `RESUME_DO_LEASE_SECONDS / HEARTBEAT_MS / MAX_ATTEMPTS` | 任务租约 90 秒 / 心跳 20000ms / 最多尝试 3 次 |
+| `RESUME_DO_CODE_TTL_SECONDS / COOLDOWN_SECONDS` | 注册验证码有效期 600 秒 / 重发冷却 60 秒 |
+| `RESUME_DO_CODE_DAILY_LIMIT / HOURLY_LIMIT` | 同一邮箱或手机号每天最多 10 次、同一 IP 每小时最多 30 次 |
+| `RESUME_DO_MAIL_ENABLED / MAIL_HOST / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD / MAIL_FROM / MAIL_FROM_NAME` | 邮箱验证码的 SMTP 配置；`MAIL_ENABLED=false` 时邮箱通道返回 503 `CODE_DELIVERY_UNAVAILABLE` |
+| `RESUME_DO_SMS_ENABLED / SMS_SECRET_ID / SMS_SECRET_KEY / SMS_SDK_APP_ID / SMS_SIGN_NAME / SMS_TEMPLATE_ID` | 腾讯云短信通道，模板参数依次为验证码和有效分钟数；`SMS_ENABLED=false` 时手机号通道返回 503 |
+
+注册需先通过「人机验证」拿到 `captchaTicket`，再请求验证码。`local` profile 设置 `app.verification.expose-code: true`：通道未配置时不实际发信，验证码写入 API 日志并随 `/api/auth/verification-codes` 响应的 `devCode` 返回，方便联调；本地填好 `RESUME_DO_MAIL_*` 后会用真实 SMTP 发信、不再返回 `devCode`。`prod` 永远不返回该字段。
 
 旧的项目环境变量不再兼容；请删除 IDEA 运行配置中的旧变量，并按上表填写。`JAVA_HOME`、`NODE_ENV`、`PLAYWRIGHT_BROWSERS_PATH` 等工具标准变量继续使用标准名称。
 

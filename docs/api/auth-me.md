@@ -5,6 +5,7 @@
 ## GET /api/auth/me
 
 返回当前登录用户。新增字段 `themePreference`，取值 `light`、`dark`、`system`；新注册用户为 `dark`。
+账号字段按注册方式返回：邮箱注册返回 `email`，手机号注册返回 `phone`（`+8615912345678`），两者互斥且不会同时出现。
 
 ```json
 {

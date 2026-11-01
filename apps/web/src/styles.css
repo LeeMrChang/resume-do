@@ -1508,26 +1508,11 @@ input[readonly] {
   font-weight: 800;
 }
 
-.login-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 32px 0 0;
-  padding: 7px 14px;
-  border: 1px solid var(--success-border);
-  border-radius: 999px;
-  background: var(--success-subtle);
-  color: var(--success-fg);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.login-pill::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
+.login-title {
+  margin: 22px 0 0;
+  font-size: 22px;
+  line-height: 1.35;
+  font-weight: 700;
 }
 
 .segmented {
@@ -1591,11 +1576,138 @@ input[readonly] {
   margin-top: 14px;
 }
 
-.login-note {
-  color: var(--fg-subtle);
+.notice {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--success-border);
+  border-radius: 7px;
+  background: var(--success-subtle);
+  color: var(--success-fg);
   font-size: 12px;
-  line-height: 1.9;
-  margin: 16px 0 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.code-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.code-row input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.code-button {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border-color: var(--success-border);
+  background: var(--canvas-inset);
+  color: var(--brand);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.code-button:hover:not(:disabled) {
+  background: var(--success-subtle);
+}
+
+.login-card label.agreement {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.login-card label.agreement input {
+  width: auto;
+  margin: 3px 0 0;
+  accent-color: var(--brand-fill);
+  flex-shrink: 0;
+}
+
+.captcha-dialog {
+  width: 420px;
+}
+
+.captcha-dialog .captcha-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--canvas-inset);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.captcha-card input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--brand-fill);
+  cursor: pointer;
+}
+
+.captcha-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.3;
+}
+
+.captcha-card-text b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.captcha-card-text small {
+  color: var(--fg-subtle);
+  font-size: 11px;
+}
+
+.captcha-canvas {
+  position: relative;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f4f6f8;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.captcha-canvas img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.captcha-dot {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--brand-fill);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.captcha-dialog .error {
+  margin-top: 12px;
 }
 
 .boot {
@@ -1680,10 +1792,7 @@ input[readonly] {
     padding: 20px 18px 26px;
   }
 
-  .login-pill {
-    margin-top: 20px;
-    white-space: normal;
-  }  .topbar {
+  .topbar {
     padding: 0 12px;
     gap: 8px;
   }

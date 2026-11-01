@@ -210,7 +210,8 @@ test('first paint uses the stored theme before the session request resolves', { 
     await page.locator('.login-shell').waitFor({ timeout: 10_000 });
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
     assert.equal((await page.locator('.login-brand').textContent())?.replace(/\s+/g, ''), '简ResumeDo');
-    assert.equal((await page.locator('.login-pill').textContent())?.trim(), '本地优先 · 简历数据不出你的设备');
+    assert.equal((await page.locator('.login-pill').count()), 0);
+    assert.equal((await page.locator('.login-title').textContent())?.trim(), '登录你的账号');
     assert.equal(await page.locator('.login-card .login-logo').isVisible(), true);
     await page.screenshot({ path: '/tmp/resume-do-theme-login-light.png' });
 

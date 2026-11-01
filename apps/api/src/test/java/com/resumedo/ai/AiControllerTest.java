@@ -25,7 +25,7 @@ class AiControllerTest {
 
     @Test void returnsNoStoreSuggestionUsingAuthenticatedOwner() throws Exception {
         var input = new AiDtos.RewriteRequest(ID, "polish", "正文", "work", null, true);
-        when(auth.current("test@example.invalid")).thenReturn(new UserAccount(9, "test@example.invalid", "", "test", "dark"));
+        when(auth.current("test@example.invalid")).thenReturn(new UserAccount(9, "test@example.invalid", null, "", "test", "dark"));
         when(service.rewrite(9, input)).thenReturn(new AiDtos.RewriteResponse(ID, "polish", "正文", "改写", List.of()));
         mvc.perform(post("/api/ai/rewrite").principal(new TestingAuthenticationToken("test@example.invalid", ""))
                 .contentType("application/json").content(json.writeValueAsBytes(input)))

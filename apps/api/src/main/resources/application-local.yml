@@ -19,3 +19,6 @@ app:
     daily-limit: ${RESUME_DO_AI_DAILY_LIMIT:20}
     per-minute-limit: ${RESUME_DO_AI_PER_MINUTE_LIMIT:5}
   storage-dir: ${RESUME_DO_STORAGE_DIR:../../data}
+  verification:
+    # 仅本地开发：未配置 SMTP／短信时把验证码写进日志并随响应返回；配置好后照常真实发送。
+    expose-code: true

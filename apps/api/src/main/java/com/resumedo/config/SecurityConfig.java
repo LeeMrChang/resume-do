@@ -39,7 +39,14 @@ public class SecurityConfig {
                 .logout(logout -> logout.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/logout", "/api/health")
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/register",
+                                "/api/auth/logout",
+                                "/api/auth/captcha",
+                                "/api/auth/captcha/**",
+                                "/api/auth/verification-codes",
+                                "/api/health")
                         .permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors

@@ -28,6 +28,18 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  mail:
+    host: ${RESUME_DO_MAIL_HOST:}
+    port: ${RESUME_DO_MAIL_PORT:465}
+    username: ${RESUME_DO_MAIL_USERNAME:}
+    password: ${RESUME_DO_MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: ${RESUME_DO_MAIL_SSL:true}
+      mail.smtp.starttls.enable: ${RESUME_DO_MAIL_STARTTLS:false}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
   jackson:
     time-zone: UTC
     default-property-inclusion: non_null
@@ -36,6 +48,26 @@ app:
   download-ttl-minutes: ${RESUME_DO_DOWNLOAD_TTL_MINUTES:10}
   template-version: 2
   renderer-version: "2"
+  verification:
+    code-ttl-seconds: ${RESUME_DO_CODE_TTL_SECONDS:600}
+    cooldown-seconds: ${RESUME_DO_CODE_COOLDOWN_SECONDS:60}
+    daily-limit-per-target: ${RESUME_DO_CODE_DAILY_LIMIT:10}
+    hourly-limit-per-ip: ${RESUME_DO_CODE_HOURLY_LIMIT:30}
+    expose-code: false
+    email:
+      enabled: ${RESUME_DO_MAIL_ENABLED:false}
+      from: ${RESUME_DO_MAIL_FROM:}
+      from-name: ${RESUME_DO_MAIL_FROM_NAME:Resume Do}
+    sms:
+      enabled: ${RESUME_DO_SMS_ENABLED:false}
+      secret-id: ${RESUME_DO_SMS_SECRET_ID:}
+      secret-key: ${RESUME_DO_SMS_SECRET_KEY:}
+      sdk-app-id: ${RESUME_DO_SMS_SDK_APP_ID:}
+      sign-name: ${RESUME_DO_SMS_SIGN_NAME:}
+      template-id: ${RESUME_DO_SMS_TEMPLATE_ID:}
+      region: ${RESUME_DO_SMS_REGION:ap-guangzhou}
+      endpoint: ${RESUME_DO_SMS_ENDPOINT:https://sms.tencentcloudapi.com}
+      validity-minutes: ${RESUME_DO_SMS_VALIDITY_MINUTES:10}
 
 logging:
   pattern:

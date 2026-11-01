@@ -7,7 +7,7 @@ info:
     本文件依据当前 `apps/api` 的 Controller / DTO / Service 实现整理，供新前端接手联调使用；
     当前前端调用实现见 `apps/web/src/api.ts`。
 
-    > **端点范围**：`/api` 下共 28 个 operation。健康检查、注册、登录、退出为公开接口，其余均需要登录 Session。
+    > **端点范围**：`/api` 下共 31 个 operation。健康检查、人机验证、验证码、注册、登录、退出为公开接口，其余均需要登录 Session。
     > **实现基线**：2026-10-30。
     > **配套文档**：[主题偏好接口](auth-me.md)、[AI 润色与精炼接口](ai-rewrite.md)。
 
@@ -21,7 +21,7 @@ info:
       开发环境由 Vite 代理 `/api`，生产环境由 Nginx 代理 `/api`。
     - Session 默认有效期 7 天；Session 保存在 API 进程内存中，**重启 API 后需要重新登录**。
     - 当前关闭了 CSRF 校验，不需要额外 CSRF Token；请勿把该配置复制到跨站场景。
-    - 公开接口：`GET /api/health`、`POST /api/auth/register`、`POST /api/auth/login`、`POST /api/auth/logout`。
+    - 公开接口：`GET /api/health`、`GET /api/auth/captcha`、`POST /api/auth/captcha/{captchaId}/verify`、`POST /api/auth/verification-codes`、`POST /api/auth/register`、`POST /api/auth/login`、`POST /api/auth/logout`。
       其余接口未登录统一返回 `401 { "code": "UNAUTHORIZED", "message": "请先登录", "details": {} }`。
     - JSON 请求使用 `Content-Type: application/json`；文件上传使用 `multipart/form-data`，字段名固定为 `file`。
     - 序列化使用 Jackson，`default-property-inclusion` 为 `non_null`：**值为 null 的字段会直接省略，而不是返回 null**。
@@ -67,7 +67,7 @@ info:
     | 404 | `NOT_FOUND` | 资源不存在或不属于当前账号 |
     | 409 | `REVISION_CONFLICT` | 简历 revision 已变化，`details.currentRevision` / `details.updatedAt` |
     | 409 | `ORIGINAL_RESUME_READ_ONLY` / `ORIGINAL_RESUME_SOURCE_DOWNLOAD` | 原件简历不可编辑 / 不可走编辑版导出 |
-    | 409 | `EXPORT_NOT_READY` / `IMPORT_CONFLICT` / `DUPLICATE` / `EMAIL_EXISTS` | 状态冲突或重复 |
+    | 409 | `EXPORT_NOT_READY` / `IMPORT_CONFLICT` / `DUPLICATE` / `ACCOUNT_EXISTS` | 状态冲突或重复 |
     | 410 | `SOURCE_MISSING` / `IMPORT_EXPIRED` / `FILE_REMOVED` / `FILE_EXPIRED` / `FILE_MISSING` | 资源已过期或被清理 |
     | 413 | `FILE_TOO_LARGE` | 上传超过容器上限（个别路径返回 400，见各接口说明） |
     | 429 | `RESUME_LIMIT_REACHED` / `IMPORT_LIMIT` / `IMPORT_BUSY` | 简历数、导入任务数或解析并发达到上限 |
@@ -97,6 +97,9 @@ info:
     | 方法 | 路径 | 说明 | 鉴权 |
     | --- | --- | --- | --- |
     | GET | `/api/health` | 健康检查 | 公开 |
+    | GET | `/api/auth/captcha` | 获取人机验证题目 | 公开 |
+    | POST | `/api/auth/captcha/{captchaId}/verify` | 提交点击坐标换验证票据 | 公开 |
+    | POST | `/api/auth/verification-codes` | 发送邮箱／短信验证码 | 公开 |
     | POST | `/api/auth/register` | 注册并自动登录 | 公开 |
     | POST | `/api/auth/login` | 登录 | 公开 |
     | POST | `/api/auth/logout` | 退出登录 | 公开 |
@@ -187,6 +190,131 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/auth/captcha:
+    get:
+      tags: [认证]
+      summary: 获取人机验证题目
+      operationId: createCaptcha
+      security: []
+      description: |
+        发送验证码前必须完成人机验证。接口返回 320×200 的 PNG（base64 data URL），
+        题目固定为「点击所有闭合环形」；每张图包含 3 个闭合圆环和 5 个干扰图形。
+
+        - 题目 5 分钟有效，最多校验 4 次、最多 8 个点击点；同一 IP 每小时最多 40 次。
+        - 校验通过后返回 `ticket`，5 分钟内有效且只能使用一次。
+      responses:
+        "200":
+          description: 验证题目
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptchaChallenge"
+              example:
+                captchaId: 4d1b8b2f-0d3a-4c55-9b2e-1f6f5a0c9d11
+                question: 点击所有闭合环形
+                image: data:image/png;base64,iVBORw0KGgo...
+                expiresInSeconds: 300
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/captcha/{captchaId}/verify:
+    post:
+      tags: [认证]
+      summary: 提交人机验证点击坐标
+      operationId: verifyCaptcha
+      security: []
+      description: |
+        `points` 为相对图片的归一化坐标（0–1），按点击顺序提交，最多 8 个。
+        命中所有闭合环形且不包含干扰图形才算通过；失败按次数计数，超过 4 次需重新获取题目。
+      parameters:
+        - name: captchaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaptchaAnswer"
+            example:
+              points:
+                - { x: 0.63, y: 0.28 }
+                - { x: 0.89, y: 0.28 }
+                - { x: 0.85, y: 0.76 }
+      responses:
+        "200":
+          description: 验证通过，返回一次性票据
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptchaTicket"
+              example:
+                ticket: 9c1f4d80-3c52-4b3e-9f7a-2d3e4f5a6b7c
+                expiresInSeconds: 300
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/verification-codes:
+    post:
+      tags: [认证]
+      summary: 发送注册验证码
+      operationId: sendVerificationCode
+      security: []
+      description: |
+        先校验人机验证票据，再向邮箱或手机号发送 6 位数字验证码。
+
+        - `channel` 只能是 `email` 或 `phone`；`target` 必须是有效邮箱或中国大陆手机号。
+        - `captchaTicket` 必须来自 `/api/auth/captcha/{captchaId}/verify`，且与当前 IP 一致、只能用一次。
+        - 重发冷却 60 秒；同一目标每天 10 次；同一 IP 每小时 30 次。
+        - 已注册的邮箱／手机号返回 409 `ACCOUNT_EXISTS`。
+        - `local` profile 不实际发信，响应带 `devCode`；`prod` 不返回该字段。
+        - 邮箱通道需要 `RESUME_DO_MAIL_ENABLED=true` 与 SMTP 配置；手机号通道需要 `RESUME_DO_SMS_ENABLED=true` 与腾讯云短信配置。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerificationCodeRequest"
+            example:
+              channel: email
+              target: user@example.com
+              captchaTicket: 9c1f4d80-3c52-4b3e-9f7a-2d3e4f5a6b7c
+      responses:
+        "200":
+          description: 验证码已发送
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationCodeSent"
+              example:
+                retryAfterSeconds: 60
+                expiresInSeconds: 600
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: 该邮箱或手机号已注册（`ACCOUNT_EXISTS`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                code: ACCOUNT_EXISTS
+                message: 该邮箱已注册，请直接登录
+                details: {}
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/auth/register:
     post:
       tags: [认证]
@@ -194,10 +322,12 @@ paths:
       operationId: register
       security: []
       description: |
-        注册成功后立即建立登录 Session（响应同登录），同时下发 `JSESSIONID` Cookie。
+        使用已发送的验证码完成注册，成功后立即建立登录 Session（响应同登录）并下发 `JSESSIONID` Cookie。
 
-        - 邮箱统一 `trim` 并转小写；密码长度 8–72（BCrypt）。
-        - `displayName` 省略或为空白时，默认取邮箱 `@` 前部分。
+        - `channel=email` 时 `target` 为邮箱，统一 `trim` 并转小写；`channel=phone` 时接受 `159 1234 5678`、`86159…`、`+86159…` 等写法，统一存为 `+86` 前缀。
+        - `code` 为 6 位数字，10 分钟内有效；每个验证码只能使用一次，最多尝试 5 次。
+        - 密码长度 8–72（BCrypt）。
+        - `displayName` 省略或空白时：邮箱取 `@` 前部分，手机号取 `用户` + 后 4 位。
         - 新用户主题偏好默认为 `dark`。
       requestBody:
         required: true
@@ -206,7 +336,9 @@ paths:
             schema:
               $ref: "#/components/schemas/RegisterRequest"
             example:
-              email: user@example.com
+              channel: email
+              target: user@example.com
+              code: "123456"
               password: Password123
               displayName: 示例用户
       responses:
@@ -229,14 +361,14 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
-          description: 邮箱已注册（`EMAIL_EXISTS`）
+          description: 邮箱或手机号已注册（`ACCOUNT_EXISTS`）
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
               example:
-                code: EMAIL_EXISTS
-                message: 该邮箱已注册
+                code: ACCOUNT_EXISTS
+                message: 该邮箱已注册，请直接登录
                 details: {}
         "500":
           $ref: "#/components/responses/InternalError"
@@ -248,8 +380,8 @@ paths:
       operationId: login
       security: []
       description: |
-        校验邮箱密码并建立 Session；成功后会更换 Session ID（防会话固定）。
-        邮箱或密码错误统一返回 `401 UNAUTHORIZED`，不区分账号是否存在。
+        校验账号密码并建立 Session；成功后会更换 Session ID（防会话固定）。
+        `account` 可填邮箱或手机号（含 `+86` / 空格 / `86` 前缀写法均可），账号或密码错误统一返回 `401 UNAUTHORIZED`，不区分账号是否存在。
       requestBody:
         required: true
         content:
@@ -257,7 +389,7 @@ paths:
             schema:
               $ref: "#/components/schemas/LoginRequest"
             example:
-              email: user@example.com
+              account: user@example.com
               password: Password123
       responses:
         "200":
@@ -1536,6 +1668,27 @@ components:
             code: FORBIDDEN
             message: 无权访问
             details: {}
+    TooManyRequests:
+      description: 频率超限（`CODE_COOLDOWN` / `CODE_DAILY_LIMIT` / `CODE_IP_LIMIT` / `TOO_MANY_REQUESTS`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: CODE_COOLDOWN
+            message: 请 42 秒后再获取验证码
+            details:
+              retryAfterSeconds: 42
+    ServiceUnavailable:
+      description: 验证码通道未开通（`CODE_DELIVERY_UNAVAILABLE`）或发送失败（`CODE_SEND_FAILED`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            code: CODE_DELIVERY_UNAVAILABLE
+            message: 邮箱验证码暂未开通，请联系管理员
+            details: {}
     NotFound:
       description: 资源不存在或不属于当前账号（`NOT_FOUND`）
       content:
@@ -1607,7 +1760,14 @@ components:
         - FORBIDDEN
         - NOT_FOUND
         - DUPLICATE
-        - EMAIL_EXISTS
+        - ACCOUNT_EXISTS
+        - CODE_INVALID
+        - CODE_COOLDOWN
+        - CODE_DAILY_LIMIT
+        - CODE_IP_LIMIT
+        - CODE_DELIVERY_UNAVAILABLE
+        - CODE_SEND_FAILED
+        - TOO_MANY_REQUESTS
         - REVISION_CONFLICT
         - ORIGINAL_RESUME_READ_ONLY
         - ORIGINAL_RESUME_SOURCE_DOWNLOAD
@@ -1655,7 +1815,7 @@ components:
 
     User:
       type: object
-      required: [id, email, displayName, themePreference]
+      required: [id, displayName, themePreference]
       properties:
         id:
           type: integer
@@ -1665,6 +1825,11 @@ components:
           type: string
           format: email
           maxLength: 190
+          description: 邮箱注册账号返回；手机号注册账号省略该字段
+        phone:
+          type: string
+          maxLength: 32
+          description: 手机号注册账号返回，格式 `+8615912345678`；邮箱注册账号省略该字段
         displayName:
           type: string
           maxLength: 100
@@ -1675,12 +1840,20 @@ components:
 
     RegisterRequest:
       type: object
-      required: [email, password]
+      required: [channel, target, code, password]
       properties:
-        email:
+        channel:
           type: string
-          format: email
+          enum: [email, phone]
+          description: 注册方式
+        target:
+          type: string
           maxLength: 190
+          description: 邮箱或手机号；手机号接受 `159 1234 5678`、`86159…`、`+86159…`，统一存为 `+86` 前缀
+        code:
+          type: string
+          pattern: "^\\d{6}$"
+          description: 6 位数字验证码，10 分钟内有效、单次使用、最多尝试 5 次
         password:
           type: string
           minLength: 8
@@ -1688,19 +1861,100 @@ components:
         displayName:
           type: string
           maxLength: 100
-          description: 省略或空白时默认取邮箱 `@` 前部分
+          description: 省略或空白时，邮箱取 `@` 前部分，手机号取 `用户` + 后 4 位
 
     LoginRequest:
       type: object
-      required: [email, password]
+      required: [account, password]
       properties:
-        email:
+        account:
           type: string
-          format: email
           maxLength: 190
+          description: 邮箱或手机号
         password:
           type: string
           maxLength: 72
+
+    CaptchaChallenge:
+      type: object
+      required: [captchaId, question, image, expiresInSeconds]
+      properties:
+        captchaId:
+          type: string
+          format: uuid
+        question:
+          type: string
+          example: 点击所有闭合环形
+        image:
+          type: string
+          description: PNG 的 base64 data URL（320×200）
+        expiresInSeconds:
+          type: integer
+          example: 300
+
+    CaptchaAnswer:
+      type: object
+      required: [points]
+      properties:
+        points:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            required: [x, y]
+            properties:
+              x:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: 相对图片宽度的归一化坐标
+              y:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: 相对图片高度的归一化坐标
+
+    CaptchaTicket:
+      type: object
+      required: [ticket, expiresInSeconds]
+      properties:
+        ticket:
+          type: string
+          format: uuid
+        expiresInSeconds:
+          type: integer
+          example: 300
+
+    VerificationCodeRequest:
+      type: object
+      required: [channel, target, captchaTicket]
+      properties:
+        channel:
+          type: string
+          enum: [email, phone]
+        target:
+          type: string
+          maxLength: 190
+        captchaTicket:
+          type: string
+          maxLength: 64
+          description: '由 `/api/auth/captcha/{captchaId}/verify` 返回的一次性票据'
+
+    VerificationCodeSent:
+      type: object
+      required: [retryAfterSeconds, expiresInSeconds]
+      properties:
+        retryAfterSeconds:
+          type: integer
+          description: 重发冷却秒数
+        expiresInSeconds:
+          type: integer
+          description: 验证码有效秒数
+        devCode:
+          type: string
+          pattern: "^\\d{6}$"
+          description: 仅 `local` profile（`app.verification.expose-code=true`）返回，生产环境不出现
 
     ThemePreferenceRequest:
       type: object
