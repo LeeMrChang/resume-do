@@ -15,6 +15,26 @@ function emailProblem(raw: string) {
   return EMAIL_PATTERN.test(value) ? '' : '请输入有效的邮箱地址';
 }
 
+function EyeIcon({ off }: { off: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {off ? (
+        <>
+          <path d="M3 3l18 18" />
+          <path d="M10.6 6.2A10.9 10.9 0 0 1 12 6c6.2 0 9.8 6 9.8 6a17.6 17.6 0 0 1-3.4 3.9" />
+          <path d="M6.5 8.2A16.8 16.8 0 0 0 2.2 12s3.6 6 9.8 6c1.4 0 2.7-.3 3.8-.8" />
+          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+        </>
+      ) : (
+        <>
+          <path d="M2.2 12s3.6-6 9.8-6 9.8 6 9.8 6-3.6 6-9.8 6S2.2 12 2.2 12Z" />
+          <circle cx="12" cy="12" r="2.6" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export default function LoginPage({ onAuthenticated }: { onAuthenticated: (user: User) => void }) {
   const [mode, setMode] = useState<Mode>('login');
   const [displayName, setDisplayName] = useState('');
@@ -27,6 +47,8 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (user:
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [captchaOpen, setCaptchaOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordLocked, setPasswordLocked] = useState(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -82,6 +104,8 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (user:
     setMode(next);
     setError('');
     setNotice('');
+    setShowPassword(false);
+    setPasswordLocked(next === 'register');
   }
 
   function requestCode() {
@@ -206,15 +230,31 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (user:
 
             <label>
               {register ? '设置密码' : '密码'}
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                maxLength={72}
-                required
-                autoComplete={register ? 'new-password' : 'current-password'}
-                placeholder={register ? '8–72 位密码' : '输入密码'}
-              />
+              <span className="password-field">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name={register ? 'resume-do-signup-password' : 'resume-do-login-password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  maxLength={72}
+                  required
+                  readOnly={register && passwordLocked}
+                  onFocus={() => setPasswordLocked(false)}
+                  autoComplete={register ? 'new-password' : 'current-password'}
+                  data-1p-ignore={register ? 'true' : undefined}
+                  data-lpignore={register ? 'true' : undefined}
+                  placeholder={register ? '8–72 位密码' : '输入密码'}
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  aria-pressed={showPassword}
+                >
+                  <EyeIcon off={showPassword} />
+                </button>
+              </span>
             </label>
 
             {register && (
