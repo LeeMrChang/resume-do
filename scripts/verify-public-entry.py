@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Verify only the configured public endpoints using a fresh synthetic account."""
+"""Verify the public endpoints: unauthenticated boundary plus, with credentials, the session cookie."""
 import http.cookiejar
 import json
-import secrets
+import os
 import urllib.error
 import urllib.request
-import uuid
 
 base = 'https://resume.xiachen.xyz'
 jar = http.cookiejar.CookieJar()
@@ -21,16 +20,24 @@ def request(path, data=None):
         return json.loads(content) if content else None
 
 
-account = {'email': 'public-check-' + uuid.uuid4().hex + '@example.invalid',
-           'password': secrets.token_hex(20), 'displayName': 'Public HTTPS verification'}
-request('/api/auth/register', account)
+try:
+    request('/api/resumes')
+except urllib.error.HTTPError as error:
+    assert error.code == 401, 'unauthenticated /api/resumes must answer 401, got %s' % error.code
+else:
+    raise SystemExit('Unauthenticated /api/resumes must not succeed')
+
+account = os.environ.get('RESUME_DO_VERIFY_ACCOUNT', '').strip()
+password = os.environ.get('RESUME_DO_VERIFY_PASSWORD', '')
+if not account or not password:
+    print('SKIP: 401 boundary verified; set RESUME_DO_VERIFY_ACCOUNT/RESUME_DO_VERIFY_PASSWORD for the session cookie check.')
+    raise SystemExit(0)
+
+request('/api/auth/login', {'account': account, 'password': password})
 sessions = [cookie for cookie in jar if cookie.name == 'RESUME_DO_SESSION']
 assert sessions, 'Session cookie missing'
 assert all(cookie.secure and not cookie.domain_specified for cookie in sessions), 'Cookie must be Secure and host-only'
 assert all(cookie.has_nonstandard_attr('HttpOnly') for cookie in sessions), 'Cookie must be HttpOnly'
-assert request('/api/auth/me')['email'] == account['email']
+assert request('/api/auth/me')['email'] == account
 request('/api/auth/logout', {})
-request('/api/auth/login', {key: account[key] for key in ('email', 'password')})
-assert request('/api/auth/me')['email'] == account['email']
-request('/api/auth/logout', {})
-print('PASS: public registration/login/logout and host-only Secure HttpOnly session cookie; synthetic account only.')
+print('PASS: 401 boundary and host-only Secure HttpOnly session cookie; existing verification account only.')

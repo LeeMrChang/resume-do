@@ -3,6 +3,7 @@
 import argparse
 import http.cookiejar
 import json
+import os
 from pathlib import Path
 import secrets
 import time
@@ -13,9 +14,15 @@ import uuid
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--base', default='http://127.0.0.1:8081')
+    parser.add_argument('--email', default=os.environ.get('RESUME_DO_SMOKE_ACCOUNT', ''))
+    parser.add_argument('--code', default=os.environ.get('RESUME_DO_SMOKE_CODE', ''))
     args = parser.parse_args()
     if not args.base.startswith(('http://127.0.0.1:', 'http://localhost:')):
         raise SystemExit('Use localhost or an SSH tunnel for this test')
+    if not args.email or not args.code:
+        raise SystemExit(
+            'Registration needs a captcha and a mailed code now: seed a verification_codes row '
+            'for a fresh address and pass --email/--code (see README smoke test section).')
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def request(path, body=None, method=None):
@@ -26,12 +33,17 @@ def main():
             value = response.read()
             return json.loads(value) if 'application/json' in response.headers.get('Content-Type', '') else value
 
-    user = {'email': 'deploy-' + uuid.uuid4().hex + '@example.invalid',
-            'password': secrets.token_hex(20), 'displayName': 'Deployment verification'}
+    password = secrets.token_hex(20)
     request('/api/health')
-    request('/api/auth/register', user)
+    request('/api/auth/register', {
+        'channel': 'email',
+        'target': args.email,
+        'code': args.code,
+        'password': password,
+        'displayName': 'Deployment verification',
+    })
     request('/api/auth/logout', {}, 'POST')
-    request('/api/auth/login', {'email': user['email'], 'password': user['password']})
+    request('/api/auth/login', {'account': args.email, 'password': password})
     sample = json.loads((Path(__file__).resolve().parents[1] / 'apps/api/src/main/resources/empty-resume.json').read_text())
     sample['document']['basic']['name'] = '部署验证'
     sample['title'] = '部署验证'
@@ -54,7 +66,7 @@ def main():
     pdf = request('/api/exports/' + job['id'] + '/file')
     assert pdf.startswith(b'%PDF-') and len(pdf) > 1000
     request('/api/resumes/' + resume['id'], method='DELETE')
-    print('PASS: login, create/save/reload, queued PDF generation/download, delete; only a new test account was used.')
+    print('PASS: register/login, create/save/reload, queued PDF generation/download, delete; only a new test account was used.')
 
 
 if __name__ == '__main__': main()

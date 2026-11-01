@@ -98,13 +98,23 @@ ssh -N -L 8081:127.0.0.1:8081 ubuntu@175.178.194.116
 
 验收：新注册测试账号 → 编辑/保存/刷新 → 上传合成 PDF → 原件下载字节校验 → 编辑版 PDF 下载 → 重启后内容仍在。不得使用开发机真实账号数据库做自动验证。
 
-也可在 Mac 仓库根目录、隧道运行时显式执行：
+也可在 Mac 仓库根目录、隧道运行时显式执行。注册已改为「人机验证 + 邮件验证码」，因此先往一次性测试地址植入一条验证码记录（代码固定为 `123456`）：
 
 ```bash
-python3 scripts/smoke-cloud.py --base http://127.0.0.1:8081
+# 本机：生成一次性验证码哈希
+code_hash=$(python3 scripts/generate-code-hash.py)
+
+# 服务器：/home/ubuntu/resume-do，插入测试验证码
+sudo docker compose -p resume-do-cloud --env-file deploy/.env --env-file current/image.env \
+  -f current/deploy/compose.cloud.yaml exec -T resume-db sh -c \
+  'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=tcp -h127.0.0.1 -uresume_do -Dresume_do' \
+  <<< "INSERT INTO verification_codes (channel, target, purpose, code_hash, expires_at, request_ip) VALUES ('email', 'smoke-$(date +%s)@example.invalid', 'register', '$code_hash', NOW(3) + INTERVAL 15 MINUTE, '127.0.0.1');"
+
+# 本机：隧道运行时执行冒烟，邮箱换成上一步实际写入的地址
+python3 scripts/smoke-cloud.py --base http://127.0.0.1:8081 --email smoke-<时间戳>@example.invalid --code 123456
 ```
 
-该命令会创建独立测试账号和简历，验证登录、保存重载、队列 PDF 生成及下载，最后删除测试简历；保留测试账号，不使用个人简历、不调用 AI。它不替代原件导入、跨重启持久化与视觉验收。仅有健康检查成功不代表 PDF 已验收。
+该命令会创建独立测试账号和简历，验证注册/登录、保存重载、队列 PDF 生成及下载，最后删除测试简历；保留测试账号，不使用个人简历、不调用 AI。它不替代原件导入、跨重启持久化与视觉验收。仅有健康检查成功不代表 PDF 已验收。CI 的两处冒烟（隔离 API 与发布容器）用同样方式在一次性数据库里植入验证码，不给线上验证码留测试后门。
 
 ## 6. 服务器运维命令
 

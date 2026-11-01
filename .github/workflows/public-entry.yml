@@ -53,6 +53,9 @@ jobs:
           scp "${options[@]}" -P "${DEPLOY_PORT:-22}" "$scratch/gateway.tar.gz" "$remote:/home/ubuntu/xiachen-public/incoming/$GITHUB_SHA.tar.gz"
           ssh "${options[@]}" -p "${DEPLOY_PORT:-22}" "$remote" "bash -s -- '$GITHUB_SHA'" < scripts/deploy-public-entry.sh
       - name: Verify public HTTPS routes
+        env:
+          RESUME_DO_VERIFY_ACCOUNT: ${{ secrets.RESUME_DO_VERIFY_ACCOUNT }}
+          RESUME_DO_VERIFY_PASSWORD: ${{ secrets.RESUME_DO_VERIFY_PASSWORD }}
         run: |
           set -euo pipefail
           for host in xiachen.xyz api.xiachen.xyz cost.xiachen.xyz resume.xiachen.xyz; do

@@ -86,11 +86,17 @@ jobs:
             sleep 2
           done
           if [[ "$ready" != 1 ]]; then
-            tail -80 "$RUNNER_TEMP/resume-api.log"
+            tail -n 80 "$RUNNER_TEMP/resume-api.log"
             exit 1
           fi
-          if ! python3 scripts/smoke-cloud.py --base http://127.0.0.1:8080; then
-            tail -80 "$RUNNER_TEMP/resume-api.log" "$RUNNER_TEMP/resume-worker.log"
+          # Registration needs a captcha and a mailed code, so seed one code row in this disposable DB.
+          email="ci-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.invalid"
+          printf "INSERT INTO verification_codes (channel, target, purpose, code_hash, expires_at, request_ip) VALUES ('email', '%s', 'register', '%s', NOW(3) + INTERVAL 15 MINUTE, '127.0.0.1');\n" \
+            "$email" "$(python3 scripts/generate-code-hash.py)" > "$RUNNER_TEMP/seed.sql"
+          docker run --rm --network host -i -e MYSQL_PWD=ci-app-only-password mysql:8.4 \
+            mysql --protocol=tcp -h127.0.0.1 -P"$RESUME_DO_DB_PORT" -uresume_do -Dresume_do < "$RUNNER_TEMP/seed.sql"
+          if ! python3 scripts/smoke-cloud.py --base http://127.0.0.1:8080 --email "$email" --code 123456; then
+            tail -n 80 "$RUNNER_TEMP/resume-api.log" "$RUNNER_TEMP/resume-worker.log"
             exit 1
           fi
 
@@ -147,7 +153,12 @@ jobs:
             compose logs --tail 80
             exit 1
           fi
-          python3 scripts/smoke-cloud.py --base http://127.0.0.1:8081
+          # Registration needs a captcha and a mailed code, so seed one code row in this disposable DB.
+          email="ci-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.invalid"
+          printf "INSERT INTO verification_codes (channel, target, purpose, code_hash, expires_at, request_ip) VALUES ('email', '%s', 'register', '%s', NOW(3) + INTERVAL 15 MINUTE, '127.0.0.1');\n" \
+            "$email" "$(python3 scripts/generate-code-hash.py)" > "$RUNNER_TEMP/seed.sql"
+          compose exec -T resume-db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=tcp -h127.0.0.1 -uresume_do -Dresume_do' < "$RUNNER_TEMP/seed.sql"
+          python3 scripts/smoke-cloud.py --base http://127.0.0.1:8081 --email "$email" --code 123456
       - name: Package source for domestic server build and registry publication
         if: steps.current.outputs.deploy == 'true'
         run: |
