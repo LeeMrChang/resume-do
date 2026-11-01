@@ -6,18 +6,118 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      full:
+        description: 'Build and deploy all services (first release / baseline recovery)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  checks:
-    name: Tests, build and isolated integration
+  plan:
+    name: Detect affected services
+    runs-on: ubuntu-24.04
+    outputs:
+      base: ${{ steps.base.outputs.sha }}
+      any: ${{ steps.plan.outputs.any }}
+      services: ${{ steps.plan.outputs.services }}
+      integration: ${{ steps.plan.outputs.integration }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == pull_request ]]; then
+            base=$(git merge-base HEAD origin/main)
+          else
+            # Include accumulated changes from failed/skipped releases, not only HEAD^.
+            base=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci-cd.yml/runs?branch=main&event=push&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty')
+          fi
+          if [[ -n "$base" ]] && ! git merge-base --is-ancestor "$base" HEAD; then base=''; fi
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+      - id: plan
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+          FULL: ${{ inputs.full || false }}
+        run: |
+          args=()
+          if [[ "$FULL" == true ]]; then args+=(--full); fi
+          python3 scripts/plan-release.py --base "$BASE" "${args[@]}" --output "$RUNNER_TEMP/plan.json"
+
+  safety:
+    name: Deployment safety
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s scripts/tests -v
+      - name: Validate workflow syntax
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci-cd.yml
+
+  service:
+    name: Check ${{ matrix.service }}
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    concurrency:
-      group: resume-do-checks-${{ github.ref }}
-      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.plan.outputs.services) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        if: matrix.service == 'api'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - if: matrix.service == 'api'
+        run: mvn -B verify -f apps/api/pom.xml
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        if: matrix.service != 'api'
+        with:
+          node-version: '22'
+          cache: npm
+      - if: matrix.service != 'api'
+        env:
+          SERVICE: ${{ matrix.service }}
+          RESUME_DO_BROWSER_CHANNEL: chromium
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run typecheck -w @resume-do/schema -w @resume-do/templates
+          npm test -w @resume-do/schema -w @resume-do/templates
+          npx playwright install --with-deps chromium
+          if [[ "$SERVICE" == web ]]; then
+            npm run typecheck -w @resume-do/web
+            npm test -w @resume-do/web
+            npm run build
+            npm run test:e2e
+          else
+            npm run typecheck -w @resume-do/pdf-worker
+            npm test -w @resume-do/pdf-worker
+            npm run test:pdf -w @resume-do/pdf-worker
+          fi
+
+  integration:
+    name: API, migrations and PDF integration
+    needs: plan
+    if: needs.plan.outputs.integration == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       mysql:
         image: mysql:8.4
@@ -32,38 +132,23 @@ jobs:
           --health-cmd="MYSQL_PWD=ci-app-only-password mysql --protocol=tcp -h127.0.0.1 -uresume_do -Dresume_do -e 'SELECT 1'"
           --health-interval=5s --health-timeout=5s --health-retries=30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22'
           cache: npm
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Deployment safety checks
-        run: |
-          python3 -m unittest discover -s scripts/tests -v
-          bash -n scripts/deploy-cloud.sh scripts/bootstrap-cloud.sh scripts/backup-cloud.sh scripts/setup-cicd.sh
-      - name: Node checks and production build
+      - name: Prepare integration dependencies
         run: |
           npm ci
-          npm run typecheck
-          npm test
-          npm run build
-      - name: Java tests and package
-        working-directory: apps/api
-        run: mvn -B verify
-      - name: Browser and PDF regression
-        env:
-          RESUME_DO_BROWSER_CHANNEL: chromium
-        run: |
           npx playwright install --with-deps chromium
-          npm run test:e2e
-          npm run test:pdf -w @resume-do/pdf-worker
+          mvn -B -DskipTests package -f apps/api/pom.xml
       - name: Isolated API, Flyway and queued PDF smoke test
         env:
           RESUME_DO_DB_HOST: 127.0.0.1
@@ -100,10 +185,29 @@ jobs:
             exit 1
           fi
 
+  checks:
+    # Stable required-check name for existing branch protection.
+    name: Tests, build and isolated integration
+    needs: [plan, safety, service, integration]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          SAFETY: ${{ needs.safety.result }}
+          SERVICE: ${{ needs.service.result }}
+          INTEGRATION: ${{ needs.integration.result }}
+          ANY: ${{ needs.plan.outputs.any }}
+          NEED_INTEGRATION: ${{ needs.plan.outputs.integration }}
+        run: |
+          [[ "$PLAN" == success && "$SAFETY" == success ]]
+          [[ "$ANY" != true || "$SERVICE" == success ]]
+          [[ "$NEED_INTEGRATION" != true || "$INTEGRATION" == success ]]
+
   deploy:
     name: Build release images and deploy
-    needs: checks
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [plan, checks]
+    if: needs.plan.outputs.any == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     concurrency:
@@ -113,6 +217,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Check deployment access and latest main
         id: current
         env:
@@ -128,43 +233,20 @@ jobs:
           : "${REGISTRY_PASSWORD:?Configure RESUME_DO_REGISTRY_PASSWORD before deploying}"
           latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
           if [[ "$latest" == "$GITHUB_SHA" ]]; then echo 'deploy=true' >> "$GITHUB_OUTPUT"; fi
-      - name: Build immutable linux/amd64 images on runner
-        if: steps.current.outputs.deploy == 'true'
+      - name: Recreate the checked release plan
+        env:
+          BASE: ${{ needs.plan.outputs.base }}
+          FULL: ${{ inputs.full || false }}
         run: |
-          set -euo pipefail
-          release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          for service in api worker web; do
-            docker build --platform linux/amd64 -f "deploy/$service.Dockerfile" -t "resume-$service:ci-$release" .
-          done
-      - name: Smoke test the actual release containers on the isolated runner
-        if: steps.current.outputs.deploy == 'true'
-        run: |
-          set -euo pipefail
-          release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          env_file="$RUNNER_TEMP/resume-docker.env"
-          printf '%s\n' "RESUME_DO_IMAGE_TAG=ci-$release" \
-            'RESUME_DO_MYSQL_IMAGE=mysql:8.4' 'RESUME_DO_MYSQL_ROOT_PASSWORD=ci-root-only-password' \
-            'RESUME_DO_DB_PASSWORD=ci-app-only-password' 'RESUME_DO_AI_ENABLED=false' > "$env_file"
-          compose() { docker compose -p resume-do-cloud --env-file "$env_file" -f deploy/compose.cloud.yaml "$@"; }
-          # Volumes belong to this disposable GitHub runner, never the production host.
-          trap 'compose down -v' EXIT
-          if ! compose up -d --wait --wait-timeout 300; then
-            compose ps
-            compose logs --tail 80
-            exit 1
-          fi
-          # Registration needs a captcha and a mailed code, so seed one code row in this disposable DB.
-          email="ci-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.invalid"
-          printf "INSERT INTO verification_codes (channel, target, purpose, code_hash, expires_at, request_ip) VALUES ('email', '%s', 'register', '%s', NOW(3) + INTERVAL 15 MINUTE, '127.0.0.1');\n" \
-            "$email" "$(python3 scripts/generate-code-hash.py)" > "$RUNNER_TEMP/seed.sql"
-          compose exec -T resume-db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=tcp -h127.0.0.1 -uresume_do -Dresume_do' < "$RUNNER_TEMP/seed.sql"
-          python3 scripts/smoke-cloud.py --base http://127.0.0.1:8081 --email "$email" --code 123456
+          args=()
+          if [[ "$FULL" == true ]]; then args+=(--full); fi
+          python3 scripts/plan-release.py --base "$BASE" "${args[@]}" --output "$RUNNER_TEMP/plan.json"
       - name: Package source for domestic server build and registry publication
         if: steps.current.outputs.deploy == 'true'
         run: |
           set -euo pipefail
           release="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          python3 scripts/package-release.py --source \
+          python3 scripts/package-release.py --source --plan "$RUNNER_TEMP/plan.json" \
             --release "$release" --output "$RUNNER_TEMP/resume-release.tar"
       - name: Upload and deploy over verified SSH
         if: steps.current.outputs.deploy == 'true'

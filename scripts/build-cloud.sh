@@ -32,7 +32,12 @@ with tarfile.open(root / 'source.tar.gz', 'r:gz') as archive:
 PY
 DOCKER=(docker)
 if ! docker info >/dev/null 2>&1; then DOCKER=(sudo -n docker); fi
-for service in api worker web; do
+services=(api worker web)
+if [[ -f "$release/plan.json" ]]; then
+  read -r -a services <<< "$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["services"]))' "$release/plan.json")"
+fi
+for service in "${services[@]}"; do
+  [[ "$service" == api || "$service" == worker || "$service" == web ]] || exit 1
   echo "Building $service on server (one CPU, 1 GiB memory limit)"
   # Classic builder enforces per-build resource limits without creating a shared BuildKit service.
   if [[ "${DOCKER[0]}" == sudo ]]; then

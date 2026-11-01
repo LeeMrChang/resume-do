@@ -28,7 +28,7 @@ services:
     logging: *logging
 
   resume-api:
-    image: resume-api:${RESUME_DO_IMAGE_TAG:?release image tag required}
+    image: ${RESUME_DO_API_IMAGE:-resume-api:${RESUME_DO_IMAGE_TAG:?release image tag required}}
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
@@ -75,7 +75,7 @@ services:
     logging: *logging
 
   resume-worker:
-    image: resume-worker:${RESUME_DO_IMAGE_TAG:?release image tag required}
+    image: ${RESUME_DO_WORKER_IMAGE:-resume-worker:${RESUME_DO_IMAGE_TAG:?release image tag required}}
     restart: unless-stopped
     environment:
       RESUME_DO_DB_HOST: resume-db
@@ -100,7 +100,7 @@ services:
     logging: *logging
 
   resume-web:
-    image: resume-web:${RESUME_DO_IMAGE_TAG:?release image tag required}
+    image: ${RESUME_DO_WEB_IMAGE:-resume-web:${RESUME_DO_IMAGE_TAG:?release image tag required}}
     restart: unless-stopped
     ports:
       - '127.0.0.1:8081:80'
