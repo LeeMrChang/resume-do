@@ -38,7 +38,8 @@ if [[ -f "$release/plan.json" ]]; then
 fi
 for service in "${services[@]}"; do
   [[ "$service" == api || "$service" == worker || "$service" == web ]] || exit 1
-  echo "Building $service on server (one CPU, 1 GiB memory limit)"
+  started=$SECONDS
+  echo "[$(date -u +%FT%TZ)] Building $service on server (one CPU, 1 GiB memory limit)"
   # Classic builder enforces per-build resource limits without creating a shared BuildKit service.
   if [[ "${DOCKER[0]}" == sudo ]]; then
     builder=(sudo -n env DOCKER_BUILDKIT=0 docker)
@@ -56,4 +57,5 @@ for service in "${services[@]}"; do
     --build-arg NODE_IMAGE=mirror.ccs.tencentyun.com/library/node:22-bookworm-slim \
     --build-arg NGINX_IMAGE=mirror.ccs.tencentyun.com/library/nginx:1.27-alpine \
     -f "$release/source/deploy/$service.Dockerfile" -t "resume-$service:$tag" "$release/source"
+  echo "[$(date -u +%FT%TZ)] Built $service in $((SECONDS - started)) seconds"
 done

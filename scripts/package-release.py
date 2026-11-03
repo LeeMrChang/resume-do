@@ -13,7 +13,7 @@ PAYLOAD = ('deploy/compose.cloud.yaml', 'scripts/backup-cloud.sh')
 SOURCE_FILES = ('package.json', 'package-lock.json', 'tsconfig.base.json', '.dockerignore',
                 'apps/api/pom.xml', 'apps/web/package.json', 'apps/web/index.html',
                 'apps/web/tsconfig.json', 'apps/web/vite.config.ts', 'apps/pdf-worker/package.json',
-                'scripts/copy-pdf-assets.mjs', 'scripts/smoke-cloud.py', 'scripts/isolate-compose.py', 'deploy/api.Dockerfile', 'deploy/web.Dockerfile',
+                'scripts/copy-pdf-assets.mjs', 'scripts/docker-dependencies.mjs', 'scripts/smoke-cloud.py', 'scripts/isolate-compose.py', 'deploy/api.Dockerfile', 'deploy/web.Dockerfile',
                 'deploy/worker.Dockerfile', 'deploy/nginx.conf', 'deploy/worker-health.mjs',
                 'deploy/maven-settings.xml')
 SOURCE_DIRS = ('apps/api/src/main', 'apps/web/src', 'apps/web/public',

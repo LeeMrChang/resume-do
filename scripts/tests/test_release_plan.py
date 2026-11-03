@@ -57,6 +57,7 @@ class ReleasePlanTests(unittest.TestCase):
                 second = commit('apps/web/App.tsx', 'web')
                 third = commit('apps/pdf-worker/db.ts', 'worker')
                 self.assertEqual(planner.plan(first, third)['services'], ['worker', 'web'])
+                self.assertFalse(planner.plan(first, third)['docker_validation'])
                 self.assertEqual(planner.plan(second, third)['services'], ['worker'])
                 git('rm', 'apps/web/App.tsx')
                 git('commit', '-qm', 'delete')
@@ -66,5 +67,8 @@ class ReleasePlanTests(unittest.TestCase):
                 self.assertEqual(set(planner.plan(before, 'HEAD')['services']), set(planner.SERVICES))
                 self.assertTrue(planner.plan(before, 'HEAD')['migrations'])
                 self.assertEqual(set(planner.plan(before, 'HEAD', full=True)['services']), set(planner.SERVICES))
+                before_docker = git('rev-parse', 'HEAD')
+                commit('deploy/worker.Dockerfile', 'FROM node:22-bookworm-slim')
+                self.assertTrue(planner.plan(before_docker, 'HEAD')['docker_validation'])
             finally:
                 os.chdir(cwd)
