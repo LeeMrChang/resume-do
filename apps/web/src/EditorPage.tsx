@@ -1527,6 +1527,7 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
       {dialog?.kind === 'appearance' && (
         <AppearanceDialog
           kind={dialog.which}
+          document={doc}
           appearance={appearanceDraft ?? appearance}
           onChange={previewAppearance}
           onApply={applyAppearance}

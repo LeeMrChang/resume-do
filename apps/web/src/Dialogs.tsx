@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { createDefaultAppearance, type ResumeAppearance } from '@resume-do/schema';
-import { TEMPLATE_CATALOG, TEMPLATE_GROUPS, normalizeTemplateId, renderThumbnailFragment } from '@resume-do/templates';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { createDefaultAppearance, type ResumeAppearance, type ResumeDocument } from '@resume-do/schema';
+import { TEMPLATE_CATALOG, TEMPLATE_GROUPS, normalizeTemplateId, renderThumbnailFragment, type TemplateSpec } from '@resume-do/templates';
 import { api, ApiError, type ExportJob, type OriginalSource } from './api';
 import { waitForExport } from './exportPolling';
+import Preview from './Preview';
 
 export function Modal({
   title,
@@ -10,36 +12,45 @@ export function Modal({
   children,
   onClose,
   wide,
+  preview,
+  disableEscape,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  preview?: boolean;
+  disableEscape?: boolean;
 }) {
+  const titleId = useId();
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && !disableEscape) onClose();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, disableEscape]);
 
   return (
     <div
-      className="modal show"
+      className={preview ? 'modal show modal-preview' : 'modal show'}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className={wide ? "dialog dialog-wide" : "dialog"} style={wide ? { width: 1040 } : undefined}>
+      <div
+        className={preview ? 'dialog dialog-preview' : wide ? 'dialog dialog-wide' : 'dialog'}
+        style={wide && !preview ? { width: 1040 } : undefined}
+      >
         <button type="button" className="close" onClick={onClose} aria-label="关闭">
           ×
         </button>
-        <h2 id="dialog-title">{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         {subtitle && <p className="sub">{subtitle}</p>}
         {children}
       </div>
@@ -96,14 +107,67 @@ const DIALOG_TEXT: Record<AppearanceDialogKind, { title: string; subtitle: strin
 
 const SWATCHES = ['#238b72', '#263f58', '#9a5b3f', '#5d5a8f', '#b03c4e', '#2f6f9f', '#44514a'];
 
+function TemplatePreviewDialog({
+  spec,
+  document,
+  appearance,
+  onUse,
+  onClose,
+}: {
+  spec: TemplateSpec;
+  document: ResumeDocument;
+  appearance: ResumeAppearance;
+  onUse: () => void;
+  onClose: () => void;
+}) {
+  const [pageCount, setPageCount] = useState(1);
+  const previewAppearance = useMemo(
+    () => ({ ...appearance, templateId: spec.id, themeColor: spec.accent }),
+    [appearance, spec],
+  );
+  const zoom = useMemo(() => {
+    const dialogWidth = Math.min(690, window.innerWidth * 0.94);
+    return Math.max(0.3, Math.min(0.75, (dialogWidth - 54) / 794));
+  }, []);
+
+  return createPortal(
+    <Modal
+      title={`模板预览 · ${spec.name}`}
+      subtitle={`${spec.id} · ${spec.group} · 使用当前简历内容试穿，点击“使用此模板”后还需应用才会保存。`}
+      onClose={onClose}
+      preview
+    >
+      <div className="template-preview-stage">
+        <Preview
+          document={document}
+          appearance={previewAppearance}
+          zoom={zoom}
+          onPageCount={(count) => setPageCount(count)}
+        />
+      </div>
+      <div className="status-line">
+        <span>页面</span>
+        <span>A4 · 210 × 297mm · 共 {pageCount} 页</span>
+      </div>
+      <footer>
+        <button type="button" onClick={onClose}>返回列表</button>
+        <button type="button" className="primary" onClick={onUse}>使用此模板</button>
+      </footer>
+    </Modal>,
+    globalThis.document.body,
+  );
+}
+
 export function AppearanceDialog({
   kind,
+  document,
   appearance,
   onChange,
   onApply,
   onCancel,
 }: {
   kind: AppearanceDialogKind;
+  document: ResumeDocument;
   appearance: ResumeAppearance;
   onChange: (appearance: ResumeAppearance) => void;
   onApply: () => void;
@@ -112,6 +176,7 @@ export function AppearanceDialog({
   const text = DIALOG_TEXT[kind];
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('全部');
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const thumbnails = useMemo(() => kind === 'template'
     ? new Map(TEMPLATE_CATALOG.map(spec => [spec.id, renderThumbnailFragment(createDefaultAppearance(), spec.id)]))
     : new Map<string, string>(), [kind]);
@@ -119,9 +184,18 @@ export function AppearanceDialog({
     (group === '全部' || spec.group === group) &&
     `${spec.id} ${spec.name} ${spec.group}`.includes(query.trim()),
   );
+  const previewSpec = kind === 'template'
+    ? TEMPLATE_CATALOG.find(spec => spec.id === previewId)
+    : undefined;
 
   return (
-    <Modal title={text.title} subtitle={text.subtitle} onClose={onCancel} wide={kind === 'template'}>
+    <Modal
+      title={text.title}
+      subtitle={text.subtitle}
+      onClose={onCancel}
+      wide={kind === 'template'}
+      disableEscape={Boolean(previewSpec)}
+    >
       {kind === 'spacing' && (
         <div className="range-list">
           <RangeField
@@ -223,25 +297,45 @@ export function AppearanceDialog({
                   onClick={() => setGroup(item)}>{item}</button>
               ))}
             </div>
-            <p className="note" role="status">共 60 套模板，当前显示 {filtered.length} 套。点击卡片预览，应用后保存。</p>
+            <p className="note" role="status">共 {TEMPLATE_CATALOG.length} 套模板，当前显示 {filtered.length} 套。点击卡片选中，点“预览”用当前简历查看整页效果，应用后保存。</p>
           </div>
           <div className="template-grid">
             {filtered.map(spec => (
-              <button type="button" key={spec.id}
-                aria-label={`${spec.id} ${spec.name}`}
-                aria-pressed={normalizeTemplateId(appearance.templateId) === spec.id}
-                className={`template-card ${normalizeTemplateId(appearance.templateId) === spec.id ? 'active' : ''}`}
-                onClick={() => onChange({ ...appearance, templateId: spec.id, themeColor: spec.accent })}>
-                <div className="template-thumbnail" aria-hidden="true">
-                  <div className="template-thumbnail-pages" dangerouslySetInnerHTML={{ __html: thumbnails.get(spec.id) ?? '' }} />
-                </div>
-                <b>{spec.name} <span className="template-id">{spec.id}</span></b>
-                <small>{spec.group}</small>
-              </button>
+              <div className="template-card-wrap" key={spec.id}>
+                <button type="button"
+                  aria-label={`${spec.id} ${spec.name}`}
+                  aria-pressed={normalizeTemplateId(appearance.templateId) === spec.id}
+                  className={`template-card ${normalizeTemplateId(appearance.templateId) === spec.id ? 'active' : ''}`}
+                  onClick={() => onChange({ ...appearance, templateId: spec.id, themeColor: spec.accent })}>
+                  <div className="template-thumbnail" aria-hidden="true">
+                    <div className="template-thumbnail-pages" dangerouslySetInnerHTML={{ __html: thumbnails.get(spec.id) ?? '' }} />
+                  </div>
+                  <b>{spec.name} <span className="template-id">{spec.id}</span></b>
+                  <small>{spec.group}</small>
+                </button>
+                <button type="button" className="template-preview-btn"
+                  aria-label={`预览模板 ${spec.id} ${spec.name}`}
+                  onClick={() => setPreviewId(spec.id)}>
+                  预览
+                </button>
+              </div>
             ))}
           </div>
           {filtered.length === 0 && <p className="note">没有匹配的模板，请换个关键词。</p>}
         </>
+      )}
+
+      {previewSpec && (
+        <TemplatePreviewDialog
+          spec={previewSpec}
+          document={document}
+          appearance={appearance}
+          onClose={() => setPreviewId(null)}
+          onUse={() => {
+            onChange({ ...appearance, templateId: previewSpec.id, themeColor: previewSpec.accent });
+            setPreviewId(null);
+          }}
+        />
       )}
 
       <footer>
