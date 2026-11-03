@@ -67,6 +67,16 @@ test('actual PDFs: all 59 skins, multi-page content, photo and sidebar overflow'
       assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
       if (output) await writeFile(path.join(output, 'multipage-photo.pdf'), pdf);
     });
+    await t.test('bundled typefaces export without errors', async () => {
+      for (const fontId of ['noto-sans', 'noto-serif', 'lxgw-wenkai'] as const) {
+        const input = parseSnapshot(snapshot('1045'));
+        input.appearance.fontId = fontId;
+        const pdf = await renderer.render(input);
+        assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+        assert.ok(pdf.length > 1_000);
+        if (output) await writeFile(path.join(output, `font-${fontId}.pdf`), pdf);
+      }
+    });
     await t.test('oversized sidebar is rejected, not silently clipped', async () => {
       const input = parseSnapshot(snapshot('1015'));
       input.document.sections.find(section => section.id === 'skills')!.items[0].body =

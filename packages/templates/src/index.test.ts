@@ -5,8 +5,9 @@ import { buildBlocks } from './blocks';
 import { getTemplateLayout, splitBlocks } from './layout';
 import { paginateBlocks } from './pagination';
 import { TEMPLATE_CATALOG, getTemplateSpec } from './catalog';
-import { TEMPLATE_IDS, ALL_TEMPLATE_IDS } from '@resume-do/schema';
+import { TEMPLATE_IDS, ALL_TEMPLATE_IDS, FONT_IDS } from '@resume-do/schema';
 import { getPageMetrics, renderPagesFragment } from './render';
+import { RESUME_CSS } from './styles';
 import { sanitizeRichText, richBlocks } from './rich';
 import type { ResumeBlock } from './types';
 
@@ -219,4 +220,15 @@ test('preserves contentEditable paragraphs and inline whitespace after reload', 
   assert.equal(clean, '第一行<p>第二行 <b>加粗</b> 结尾</p><p><br /></p><p>第三行</p>');
   assert.equal(sanitizeRichText(clean), clean);
   assert.deepEqual(richBlocks(clean, 'reload').map(b => b.plainText), ['第一行', '第二行 加粗 结尾', '第三行']);
+});
+
+test('every typeface id has a font stack and reaches the page class', () => {
+  for (const fontId of FONT_IDS) {
+    assert.ok(RESUME_CSS.includes(`.font-${fontId}`), fontId);
+  }
+  const html = renderPagesFragment(
+    { document: SAMPLE_DOCUMENT, appearance: { ...SAMPLE_APPEARANCE, fontId: 'lxgw-wenkai' } },
+    [[]],
+  );
+  assert.ok(html.includes('font-lxgw-wenkai'));
 });

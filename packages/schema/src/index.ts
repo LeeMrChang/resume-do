@@ -4,6 +4,9 @@ export const SCHEMA_VERSION = 1;
 export const MAX_SECTION_BODY = 20_000;
 export const MAX_TOTAL_BODY = 100_000;
 
+export const FONT_IDS = ['sans', 'serif', 'arial', 'noto-sans', 'noto-serif', 'lxgw-wenkai'] as const;
+export type FontId = (typeof FONT_IDS)[number];
+
 const monthPattern = /^$|^\d{4}-(0[1-9]|1[0-2])$/;
 const sectionIdPattern = /^[a-z][a-z0-9-]{0,31}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
@@ -391,7 +394,7 @@ export const resumeDocumentSchema = z
 
 export const appearanceSchema = z.object({
   templateId: z.enum(ALL_TEMPLATE_IDS).default('1045'),
-  fontId: z.enum(['sans', 'serif', 'arial']).default('sans'),
+  fontId: z.enum(FONT_IDS).default('sans'),
   fontSize: z.number().int().min(12).max(16).default(14),
   lineHeight: z.number().min(1.2).max(2.2).default(1.5),
   sectionGap: z.number().int().min(5).max(50).default(18),

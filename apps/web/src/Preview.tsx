@@ -50,11 +50,17 @@ export default function Preview({ document, appearance, zoom, onPageCount }: Pre
 
   useEffect(() => {
     let alive = true;
-    void globalThis.document.fonts?.ready.then(() => {
+    const fonts = globalThis.document.fonts;
+    void fonts?.ready.then(() => {
       if (alive) setFontEpoch((value) => value + 1);
     });
+    const onLoadingDone = () => {
+      if (alive) setFontEpoch((value) => value + 1);
+    };
+    fonts?.addEventListener('loadingdone', onLoadingDone);
     return () => {
       alive = false;
+      fonts?.removeEventListener('loadingdone', onLoadingDone);
     };
   }, []);
 

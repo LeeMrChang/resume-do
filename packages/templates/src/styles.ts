@@ -755,4 +755,13 @@ export const RESUME_CSS = `
 }
 .font-serif { font-family: "Songti SC", "Noto Serif CJK SC", "Times New Roman", serif; }
 .font-arial { font-family: Arial, "PingFang SC", sans-serif; }
+.font-noto-sans {
+  font-family: "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.font-noto-serif {
+  font-family: "Noto Serif SC", "Noto Serif CJK SC", "Songti SC", "Times New Roman", serif;
+}
+.font-lxgw-wenkai {
+  font-family: "LXGW WenKai", "LXGW WenKai GB", "KaiTi", "STKaiti", serif;
+}
 `;

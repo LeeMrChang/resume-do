@@ -175,7 +175,8 @@ public class ResumeValidator {
 
         String templateId = enumText(
                 appearance, "templateId", "1045", "模板", TEMPLATE_IDS);
-        enumText(appearance, "fontId", "sans", "字体", Set.of("sans", "serif", "arial"));
+        enumText(appearance, "fontId", "sans", "字体",
+                Set.of("sans", "serif", "arial", "noto-sans", "noto-serif", "lxgw-wenkai"));
         intInRange(appearance, "fontSize", 12, 16, 14, "字号");
         numberInRange(appearance, "lineHeight", 1.2, 2.2, 1.5, "行高");
         intInRange(appearance, "sectionGap", 5, 50, 18, "模块间距");

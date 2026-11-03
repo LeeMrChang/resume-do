@@ -2389,7 +2389,7 @@ components:
           default: "1045"
         fontId:
           type: string
-          enum: [sans, serif, arial]
+          enum: [sans, serif, arial, noto-sans, noto-serif, lxgw-wenkai]
           default: sans
         fontSize:
           type: integer

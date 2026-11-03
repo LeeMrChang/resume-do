@@ -4,6 +4,7 @@ import { createDefaultAppearance, type ResumeAppearance, type ResumeDocument } f
 import { TEMPLATE_CATALOG, TEMPLATE_GROUPS, normalizeTemplateId, renderThumbnailFragment, type TemplateSpec } from '@resume-do/templates';
 import { api, ApiError, type ExportJob, type OriginalSource } from './api';
 import { waitForExport } from './exportPolling';
+import { FONT_OPTIONS, loadFont } from './fonts';
 import Preview from './Preview';
 
 export function Modal({
@@ -233,13 +234,15 @@ export function AppearanceDialog({
             字体
             <select
               value={appearance.fontId}
-              onChange={(event) =>
-                onChange({ ...appearance, fontId: event.target.value as ResumeAppearance['fontId'] })
-              }
+              onChange={(event) => {
+                const fontId = event.target.value as ResumeAppearance['fontId'];
+                void loadFont(fontId);
+                onChange({ ...appearance, fontId });
+              }}
             >
-              <option value="sans">系统黑体（PingFang / 微软雅黑）</option>
-              <option value="serif">宋体</option>
-              <option value="arial">Arial</option>
+              {FONT_OPTIONS.map(option => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
             </select>
           </label>
           <div className="range-list">

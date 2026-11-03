@@ -1,4 +1,4 @@
-import type { TemplateId } from '@resume-do/schema';
+import type { FontId, TemplateId } from '@resume-do/schema';
 import { CATALOG_170 } from './catalog170';
 
 export type TemplateLayoutKind = 'single' | 'timeline' | 'sidebar' | 'split';
@@ -101,7 +101,7 @@ export interface TemplateSpec {
   /** Split layouts keep the name block in the main column instead of the aside. */
   headerInAside?: boolean;
   /** Force a typeface regardless of the user appearance, e.g. the serif-only skins. */
-  font?: 'sans' | 'serif' | 'arial';
+  font?: FontId;
   /** Wrap each section body in a tinted rounded panel (F 活力标签). */
   cards?: boolean;
   cardBg?: string;

@@ -13,7 +13,7 @@ RUN NODE_OPTIONS=--max-old-space-size=384 npm ci --workspaces --include-workspac
 ARG DEBIAN_MIRROR=deb.debian.org
 RUN sed -i "s|http://deb.debian.org|http://${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
-    && apt-get install -y --no-install-recommends fonts-noto-cjk fontconfig \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk fonts-lxgw-wenkai fontconfig \
     && rm -rf /var/lib/apt/lists/*
 ARG PLAYWRIGHT_DOWNLOAD_HOST
 RUN PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_DOWNLOAD_HOST" npx playwright install --with-deps chromium

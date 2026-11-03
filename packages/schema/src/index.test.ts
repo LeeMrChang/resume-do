@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CANONICAL_SECTION_IDS,
+  FONT_IDS,
   SAMPLE_DOCUMENT,
   ALL_TEMPLATE_IDS,
   createDefaultAppearance,
@@ -107,6 +108,14 @@ test('accepts the expanded template set', () => {
     assert.equal(safeParseAppearance({ ...base, templateId }).success, true);
   }
   assert.equal(safeParseAppearance({ ...base, templateId: 'fancy' }).success, false);
+});
+
+test('accepts system and bundled typefaces', () => {
+  const base = createDefaultAppearance();
+  for (const fontId of FONT_IDS) {
+    assert.equal(safeParseAppearance({ ...base, fontId }).success, true);
+  }
+  assert.equal(safeParseAppearance({ ...base, fontId: 'comic' }).success, false);
 });
 
 

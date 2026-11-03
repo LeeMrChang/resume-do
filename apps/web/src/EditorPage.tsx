@@ -22,6 +22,7 @@ import RichEditor from './RichEditor';
 import OriginalResumeView from './OriginalResumeView';
 import OriginalImportButton from './OriginalImportButton';
 import ThemeToggle from './ThemeToggle';
+import { loadFont } from './fonts';
 import { resumeViewKind, confirmResumeDelete } from './originalResume';
 import {
   AppearanceDialog,
@@ -165,6 +166,11 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
     setActionError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionError]);
+
+  const loadedFontId = appearance?.fontId;
+  useEffect(() => {
+    if (loadedFontId) void loadFont(loadedFontId);
+  }, [loadedFontId]);
 
   function activateResume(resume: ResumeResponse, original = false) {
     const viewOriginal = resume.kind === 'original' || (original && !!resume.source);
