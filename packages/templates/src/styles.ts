@@ -8,7 +8,9 @@ export const RESUME_CSS = `
   width: 210mm;
   height: 297mm;
   padding: var(--r-margin);
-  background: #fff;
+  background: var(--r-page-bg, #fff);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
   overflow: hidden;
   color: var(--r-ink);
   font-size: var(--r-font-size);
@@ -444,6 +446,307 @@ export const RESUME_CSS = `
 .tpl-imported .r-bullet .r-mark {
   left: 6px;
   color: #333;
+}
+
+/* A 经典单栏 / E 衬线极简：居中且不描边的抬头 */
+.hdr-centered-plain .r-intro {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 2px 0 14px;
+  border: 0;
+  border-bottom: 1px solid #dfe4e8;
+}
+.hdr-centered-plain .r-intro-photo { display: none; }
+.hdr-centered-plain .r-intro h1 {
+  margin: 0 0 4px;
+  font-size: 2.5em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.hdr-centered-plain .r-intro .r-intent { color: #4a5560; font-weight: 500; }
+.hdr-centered-plain .r-intro .r-meta { justify-content: center; gap: 3px 18px; }
+
+/* C 顶部Banner：整幅色块贴靠页面顶边，纵向偏移由同高内边距抵消，分页高度不变 */
+.hdr-band-bleed .r-content { overflow: visible; }
+.hdr-band-bleed .r-intro {
+  margin: calc(var(--r-margin) * -1) calc(var(--r-margin) * -1) 0;
+  padding: calc(var(--r-margin) + 28px) calc(var(--r-margin) + 6px) 24px;
+  background: var(--r-accent);
+  border: 0;
+  border-radius: 0;
+  color: #fff;
+}
+.hdr-band-bleed .r-intro h1 { color: #fff; font-size: 2.28em; letter-spacing: 0.04em; }
+.hdr-band-bleed .r-intro .r-intent { color: rgba(255, 255, 255, 0.92); }
+.hdr-band-bleed .r-intro .r-meta { color: rgba(255, 255, 255, 0.82); }
+.hdr-band-bleed .r-contact-icon { color: inherit; }
+
+/* F 活力标签：右上角圆形头像 */
+.hdr-corner .r-intro {
+  position: relative;
+  align-items: flex-start;
+  padding: 2px 92px 8px 0;
+  border: 0;
+}
+.hdr-corner .r-intro-photo {
+  position: absolute;
+  right: 0;
+  top: 2px;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--r-tint);
+  color: var(--r-accent);
+}
+.hdr-corner .r-intro h1 { font-size: 2.28em; letter-spacing: 0.03em; }
+.hdr-corner .r-intro .r-intent { color: #4a5560; font-weight: 500; }
+.hdr-corner .r-intro .r-meta { color: #6b7a85; }
+
+/* B / D：方形小节标记，标题下不加长线 */
+.sec-square .r-section-title { padding-bottom: 4px; border-bottom: 0; }
+.sec-square .r-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 1px;
+  background: var(--r-accent);
+  vertical-align: 0.06em;
+}
+
+/* A / C：标题取主题色，右侧接一条细线到页边 */
+.sec-side .r-section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--r-accent);
+}
+.sec-side .r-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #dfe4e8;
+}
+
+/* B：方形标记 + 右侧细线 */
+.sec-square-rule .r-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 0;
+}
+.sec-square-rule .r-section-title::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--r-accent);
+}
+.sec-square-rule .r-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #dfe4e8;
+}
+.layout-sidebar .r-sidebar .sec-square-rule .r-section-title {
+  display: block;
+  border-bottom: 1px solid var(--r-side-line);
+}
+.layout-sidebar .r-sidebar .sec-square-rule .r-section-title::before,
+.layout-sidebar .r-sidebar .sec-square-rule .r-section-title::after { display: none; }
+
+/* D：右栏沿用方形标记，但标题下不加线 */
+.layout-split .r-sidebar .sec-square .r-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 0;
+}
+.layout-split .r-sidebar .sec-square .r-section-title::before {
+  content: '';
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--r-accent);
+}
+.layout-split .r-sidebar .sec-square .r-section-title::after { display: none; }
+
+/* A–F：经历标题与角色同一行，日期靠右 */
+.r-record-combo {
+  justify-content: flex-start;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+}
+.r-record-combo .r-record-title { min-width: 0; }
+.r-record-combo .r-record-role { color: inherit; font-weight: 500; }
+.r-record-combo .r-record-date { margin-left: auto; padding-left: 12px; }
+.r-sidebar .r-record-combo .r-record-role { color: var(--r-side-heading); }
+
+/* E：居中加字距的衬线小节标题，上下各一条细线 */
+.sec-center .r-section-title {
+  padding: 5px 0;
+  border-top: 1px solid var(--r-accent-2);
+  border-bottom: 1px solid var(--r-accent-2);
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+}
+.sec-center .r-block[data-section='education'] .r-record {
+  justify-content: center;
+  gap: 10px;
+}
+.sec-center .r-block[data-section='education'] .r-record .r-record-date { color: #5f6b75; }
+.sec-center .r-record-combo { gap: 0 8px; }
+.sec-center .r-record-combo .r-record-date { margin-left: 0; padding-left: 0; }
+.sec-center .r-block[data-section='education'] .r-paragraph,
+.sec-center .r-block[data-section='skills'] .r-paragraph,
+.sec-center .r-block[data-section='skills'] .r-bullet { text-align: center; }
+.sec-center .r-block[data-section='skills'] .r-bullet { padding-left: 0; }
+.sec-center .r-block[data-section='skills'] .r-bullet .r-mark { display: none; }
+
+/* F：实心色标签 + 每个小节一块浅色圆角面板 */
+.sec-tag .r-section-title {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 3px 12px;
+  border-radius: 5px;
+  background: var(--r-accent);
+  color: #fff;
+  font-size: 0.98em;
+  font-weight: 600;
+}
+.has-cards .r-card-group {
+  background: var(--r-card);
+  border-radius: 8px;
+}
+.has-cards .r-card-group > .r-block { padding-left: 14px; padding-right: 14px; }
+.r-measure.has-cards .r-block:not(.r-section) { padding-left: 14px; padding-right: 14px; }
+
+/* D：右侧栏，主栏在左 */
+.r-page.layout-split.aside-right { flex-direction: row-reverse; }
+.layout-split.aside-right .r-main { padding: var(--r-margin) var(--r-main-gap) 0 var(--r-margin); }
+.layout-split.aside-right .r-main .r-intro { border-bottom: 1px solid #dfe4e8; }
+.layout-split.aside-right .r-sidebar { border-right: 0; border-left: 1px solid rgba(0, 0, 0, 0.07); }
+.layout-split.aside-right .r-footer,
+.r-page.layout-split.aside-right .r-footer {
+  left: var(--r-margin);
+  right: calc(var(--r-sidebar-width) + var(--r-main-gap));
+}
+
+/* A–F：联系方式不带图标，用中点分隔（侧栏里的纵向联系方式不参与） */
+.plain-contacts .r-contact-icon { display: none; }
+.plain-contacts .r-content .r-intro .r-meta,
+.plain-contacts .r-main .r-intro .r-meta { gap: 3px 10px; }
+.plain-contacts .r-content .r-meta > span + span::before,
+.plain-contacts .r-main .r-meta > span + span::before {
+  content: '·';
+  margin-right: 10px;
+  color: #a7b0b8;
+}
+
+/* 170 套设计稿：横幅头像右置、浅色通栏横幅、局部色块、双圆装饰 */
+.photo-order-right .r-intro-photo { order: 2; }
+
+.hdr-band-light-bleed .r-content { overflow: visible; }
+.hdr-band-light-bleed .r-intro {
+  margin: calc(var(--r-margin) * -1) calc(var(--r-margin) * -1) 0;
+  padding: calc(var(--r-margin) + 26px) calc(var(--r-margin) + 6px) 22px;
+  background: var(--r-tint);
+  border: 0;
+  border-bottom: 2px solid var(--r-accent);
+  border-radius: 0;
+}
+.hdr-band-light-bleed .r-intro h1 { color: var(--r-ink); letter-spacing: 0.03em; }
+.hdr-band-light-bleed .r-intro .r-intent { color: var(--r-accent); }
+.hdr-band-light-bleed .r-intro .r-meta { color: #53616c; }
+
+.hdr-block-fill .r-intro {
+  position: relative;
+  width: 64%;
+  padding: 22px 20px 20px;
+  background: var(--r-accent);
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+}
+.hdr-block-fill .r-intro h1 { color: #fff; }
+.hdr-block-fill .r-intro .r-intent { color: rgba(255, 255, 255, 0.92); }
+.hdr-block-fill .r-intro .r-meta { color: rgba(255, 255, 255, 0.82); }
+.hdr-block-fill .r-contact-icon { color: inherit; }
+.hdr-block-fill .r-intro::after {
+  content: '';
+  position: absolute;
+  left: calc(100% + 84px);
+  top: 30px;
+  width: 96px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--r-accent-2);
+  opacity: 0.7;
+}
+
+.art-bold.hdr-art .r-intro::before {
+  width: 210px;
+  height: 210px;
+  right: -54px;
+  top: -78px;
+  background: var(--r-accent);
+  opacity: 0.95;
+}
+.art-bold.hdr-art .r-intro::after {
+  width: 150px;
+  height: 150px;
+  left: auto;
+  bottom: auto;
+  right: 28px;
+  top: 20px;
+  background: var(--r-accent-2);
+  opacity: 0.5;
+}
+
+/* 170 套设计稿：竖条小节标记、实心色块标题接细线、方形时间线节点 */
+.sec-mark .r-section-title { display: flex; align-items: center; gap: 9px; }
+.sec-mark .r-section-title::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 1.05em;
+  border-radius: 999px;
+  background: var(--r-accent);
+}
+
+.sec-blockline .r-section-title { display: flex; align-items: center; gap: 10px; }
+.sec-blockline .r-title-text {
+  padding: 3px 11px;
+  border-radius: 3px;
+  background: var(--r-accent);
+  color: #fff;
+}
+.sec-blockline .r-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--r-accent-2);
+}
+
+.layout-timeline.tl-square .r-record-head::before {
+  left: 2px;
+  top: 12px;
+  width: 9px;
+  height: 9px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--r-accent);
 }
 
 .font-sans {

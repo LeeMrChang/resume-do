@@ -1,17 +1,23 @@
 import type { TemplateId } from '@resume-do/schema';
+import { CATALOG_170 } from './catalog170';
 
 export type TemplateLayoutKind = 'single' | 'timeline' | 'sidebar' | 'split';
 
 export type TemplateHeaderStyle =
   | 'plain'
   | 'centered'
+  | 'centered-plain'
   | 'photo-right'
   | 'photo-left'
   | 'band'
+  | 'band-bleed'
   | 'band-light'
+  | 'band-light-bleed'
   | 'block'
+  | 'block-fill'
   | 'art'
   | 'classic'
+  | 'corner'
   | 'side';
 
 export type TemplateSectionStyle =
@@ -25,6 +31,13 @@ export type TemplateSectionStyle =
   | 'pill'
   | 'dots'
   | 'timeline'
+  | 'square'
+  | 'square-rule'
+  | 'side'
+  | 'center'
+  | 'tag'
+  | 'mark'
+  | 'blockline'
   | 'classic';
 
 export type TemplateGroup =
@@ -35,7 +48,25 @@ export type TemplateGroup =
   | '彩色横幅'
   | '侧栏双栏'
   | '时间线'
-  | '图标标题';
+  | '图标标题'
+  | '经典单栏'
+  | '左侧栏'
+  | '顶部Banner'
+  | '双栏分割'
+  | '衬线极简'
+  | '活力标签'
+  | '极客单栏'
+  | '技术侧栏'
+  | '迭代时间线'
+  | '终端头条'
+  | '精英单栏'
+  | '职场侧栏'
+  | '履历时间线'
+  | '沉稳头条'
+  | '活力单栏'
+  | '运营侧栏'
+  | '战绩时间线'
+  | '促销头条';
 
 export interface TemplateSpec {
   id: TemplateId;
@@ -57,10 +88,31 @@ export interface TemplateSpec {
   asideSections?: string[];
   /** Time, organisation and role share one row instead of stacking the role. */
   recordInline?: boolean;
+  /** Title and role share one line with a middot, date right (A/B/C/D/E/F skins). */
+  inlineRole?: boolean;
+  /** Contact rows print as plain text separated by middots, no icons. */
+  plainContacts?: boolean;
   /** The imported reference page has no page numbers, so no footer space is reserved. */
   showFooter?: boolean;
   /** Reference files print `2024-03 ~ 2026-03`; catalogue skins keep the dotted style. */
   isoDates?: boolean;
+  /** Split layouts place the aside column on the right (D 双栏分割). */
+  asideSide?: 'left' | 'right';
+  /** Split layouts keep the name block in the main column instead of the aside. */
+  headerInAside?: boolean;
+  /** Force a typeface regardless of the user appearance, e.g. the serif-only skins. */
+  font?: 'sans' | 'serif' | 'arial';
+  /** Wrap each section body in a tinted rounded panel (F 活力标签). */
+  cards?: boolean;
+  cardBg?: string;
+  /** Tinted sheet colour; unset leaves the page white. */
+  pageBg?: string;
+  /** Band headers print the portrait on the right in the 170 design set. */
+  photoRight?: boolean;
+  /** 170 art headers need the two corner discs at full strength. */
+  artBold?: boolean;
+  /** 170 timeline skins use square rail nodes instead of rings. */
+  squareNodes?: boolean;
 }
 
 function make(
@@ -88,12 +140,24 @@ function make(
     accent2,
     tint,
     ink,
+    inlineRole: extra.inlineRole ?? INLINE_ROLE_GROUPS.has(group),
+    plainContacts: extra.plainContacts ?? INLINE_ROLE_GROUPS.has(group),
     ...extra,
   };
 }
 
 const SIDEBAR_ASIDE = ['skills', 'honor', 'hobby'];
 const SPLIT_ASIDE = ['education', 'skills', 'honor', 'hobby'];
+
+/** The six A–F families all print `title · role` on one line. */
+const INLINE_ROLE_GROUPS = new Set<TemplateGroup>([
+  '经典单栏',
+  '左侧栏',
+  '顶部Banner',
+  '双栏分割',
+  '衬线极简',
+  '活力标签',
+]);
 
 export const TEMPLATE_CATALOG: TemplateSpec[] = [
   make('imported', '原样还原', '原样还原', 'single', 'classic', 'classic', '#67a886', '#a8d3b9', '#eef6f1', '#22303a', {
@@ -185,6 +249,66 @@ export const TEMPLATE_CATALOG: TemplateSpec[] = [
   make('1000', '孔雀蓝', '彩色横幅', 'single', 'band', 'icon', '#2f8f9f', '#a3d3dc', '#e9f5f7', '#1d3036'),
   make('1010', '蓝色时间线', '时间线', 'timeline', 'centered', 'timeline', '#2f6fb0', '#9cc0e2', '#eef4fa', '#20303f'),
   make('1017', '深蓝缎带', '深色横幅', 'single', 'band-light', 'ribbon', '#2f4f7f', '#c9a227', '#e9eef6', '#1d2a3a'),
+
+  // 30 套设计稿模板（A1–F5，6 版式 × 5 配色），来源 Ardot「模板版 30 套」
+  make('a1', '经典单栏·藏蓝', '经典单栏', 'single', 'centered-plain', 'side', '#2b3a60', '#8f9bb3', '#f4f5f8', '#1a2733', { photo: false }),
+  make('a2', '经典单栏·墨绿', '经典单栏', 'single', 'centered-plain', 'side', '#1a5a42', '#86ab9c', '#f2f6f4', '#1a2733', { photo: false }),
+  make('a3', '经典单栏·酒红', '经典单栏', 'single', 'centered-plain', 'side', '#8a2a3a', '#c6929c', '#f8f1f2', '#1a2733', { photo: false }),
+  make('a4', '经典单栏·石墨', '经典单栏', 'single', 'centered-plain', 'side', '#2a2a32', '#9a9aa3', '#f3f3f5', '#1a2733', { photo: false }),
+  make('a5', '经典单栏·靛紫', '经典单栏', 'single', 'centered-plain', 'side', '#4a3a8a', '#a79bcb', '#f4f2fa', '#1a2733', { photo: false }),
+
+  make('b1', '左侧栏·深青', '左侧栏', 'sidebar', 'side', 'square-rule', '#183838', '#78d098', '#eef4f2', '#1a2733', {
+    sidebarTone: 'dark', sidebarBg: '#183838', sidebarInk: '#f2f7f6', sidebarWidthMm: 60, asideSections: SIDEBAR_ASIDE,
+  }),
+  make('b2', '左侧栏·藏蓝', '左侧栏', 'sidebar', 'side', 'square-rule', '#203048', '#78d098', '#eef1f6', '#1a2733', {
+    sidebarTone: 'dark', sidebarBg: '#203048', sidebarInk: '#f2f6f9', sidebarWidthMm: 60, asideSections: SIDEBAR_ASIDE,
+  }),
+  make('b3', '左侧栏·暖棕', '左侧栏', 'sidebar', 'side', 'square-rule', '#483028', '#78d098', '#f5f0ec', '#1a2733', {
+    sidebarTone: 'dark', sidebarBg: '#483028', sidebarInk: '#f8f2ee', sidebarWidthMm: 60, asideSections: SIDEBAR_ASIDE,
+  }),
+  make('b4', '左侧栏·墨绿', '左侧栏', 'sidebar', 'side', 'square-rule', '#184030', '#78d098', '#edf4f0', '#1a2733', {
+    sidebarTone: 'dark', sidebarBg: '#184030', sidebarInk: '#f1f8f4', sidebarWidthMm: 60, asideSections: SIDEBAR_ASIDE,
+  }),
+  make('b5', '左侧栏·炭黑', '左侧栏', 'sidebar', 'side', 'square-rule', '#202028', '#78d098', '#f1f1f3', '#1a2733', {
+    sidebarTone: 'dark', sidebarBg: '#202028', sidebarInk: '#f4f4f6', sidebarWidthMm: 60, asideSections: SIDEBAR_ASIDE,
+  }),
+
+  make('c1', '顶部Banner·深青', '顶部Banner', 'single', 'band-bleed', 'side', '#115249', '#9fc4bd', '#eef5f3', '#1a2733', { photo: false }),
+  make('c2', '顶部Banner·藏蓝', '顶部Banner', 'single', 'band-bleed', 'side', '#223349', '#9aa7bb', '#eef1f5', '#1a2733', { photo: false }),
+  make('c3', '顶部Banner·酒红', '顶部Banner', 'single', 'band-bleed', 'side', '#7a2a3a', '#c79aa2', '#f7eff0', '#1a2733', { photo: false }),
+  make('c4', '顶部Banner·琥珀', '顶部Banner', 'single', 'band-bleed', 'side', '#8a5a2a', '#d3b18e', '#f8f1e9', '#1a2733', { photo: false }),
+  make('c5', '顶部Banner·靛紫', '顶部Banner', 'single', 'band-bleed', 'side', '#423a7a', '#a79ec9', '#f1eff7', '#1a2733', { photo: false }),
+
+  make('d1', '双栏分割·海蓝', '双栏分割', 'split', 'side', 'square', '#2a5a8a', '#9db6d0', '#f5f7fa', '#1a2733', {
+    photo: false, asideSide: 'right', headerInAside: false, sidebarWidthMm: 92, sidebarBg: '#ffffff', asideSections: SPLIT_ASIDE,
+  }),
+  make('d2', '双栏分割·琥珀', '双栏分割', 'split', 'side', 'square', '#b07a2a', '#dcc194', '#faf6ee', '#1a2733', {
+    photo: false, asideSide: 'right', headerInAside: false, sidebarWidthMm: 92, sidebarBg: '#ffffff', asideSections: SPLIT_ASIDE,
+  }),
+  make('d3', '双栏分割·玫红', '双栏分割', 'split', 'side', 'square', '#a23a52', '#d3a1ad', '#faf1f3', '#1a2733', {
+    photo: false, asideSide: 'right', headerInAside: false, sidebarWidthMm: 92, sidebarBg: '#ffffff', asideSections: SPLIT_ASIDE,
+  }),
+  make('d4', '双栏分割·橄榄', '双栏分割', 'split', 'side', 'square', '#6a7232', '#c0c39a', '#f6f7ef', '#1a2733', {
+    photo: false, asideSide: 'right', headerInAside: false, sidebarWidthMm: 92, sidebarBg: '#ffffff', asideSections: SPLIT_ASIDE,
+  }),
+  make('d5', '双栏分割·青碧', '双栏分割', 'split', 'side', 'square', '#2a7a8a', '#9cc7cf', '#f0f7f8', '#1a2733', {
+    photo: false, asideSide: 'right', headerInAside: false, sidebarWidthMm: 92, sidebarBg: '#ffffff', asideSections: SPLIT_ASIDE,
+  }),
+
+  make('e1', '衬线极简·墨黑', '衬线极简', 'single', 'centered-plain', 'center', '#1a2a33', '#c9c9d1', '#f8f8f9', '#1a2733', { photo: false, font: 'serif' }),
+  make('e2', '衬线极简·深棕', '衬线极简', 'single', 'centered-plain', 'center', '#5a3a2a', '#c9c9d1', '#f8f8f9', '#2b2018', { photo: false, font: 'serif' }),
+  make('e3', '衬线极简·黛蓝', '衬线极简', 'single', 'centered-plain', 'center', '#32526a', '#c9c9d1', '#f8f8f9', '#1b2832', { photo: false, font: 'serif' }),
+  make('e4', '衬线极简·橄榄', '衬线极简', 'single', 'centered-plain', 'center', '#4a5a22', '#c9c9d1', '#f8f8f9', '#242a19', { photo: false, font: 'serif' }),
+  make('e5', '衬线极简·梅紫', '衬线极简', 'single', 'centered-plain', 'center', '#6a2a5a', '#c9c9d1', '#f8f8f9', '#2a1a26', { photo: false, font: 'serif' }),
+
+  make('f1', '活力标签·珊瑚', '活力标签', 'single', 'corner', 'tag', '#e86858', '#f3b0a7', '#f9ece9', '#1a2733', { cards: true, cardBg: '#f1f7f7' }),
+  make('f2', '活力标签·芒果', '活力标签', 'single', 'corner', 'tag', '#e8a038', '#f4c99a', '#fbf1e3', '#1a2733', { cards: true, cardBg: '#f1f7f7' }),
+  make('f3', '活力标签·薄荷', '活力标签', 'single', 'corner', 'tag', '#38a088', '#9bcfc2', '#e8f5f1', '#1a2733', { cards: true, cardBg: '#f1f7f7' }),
+  make('f4', '活力标签·天蓝', '活力标签', 'single', 'corner', 'tag', '#4890d8', '#a3c8ee', '#ecf3fb', '#1a2733', { cards: true, cardBg: '#f1f7f7' }),
+  make('f5', '活力标签·葡萄', '活力标签', 'single', 'corner', 'tag', '#8858b0', '#c2a7d8', '#f3edf9', '#1a2733', { cards: true, cardBg: '#f1f7f7' }),
+
+  // 170 套设计稿模板（2000–2169，12 版式家族），来源 Ardot「新模板 · IT技术 / 白领通用 / 电商运营」
+  ...CATALOG_170,
 ];
 
 const BY_ID = new Map<string, TemplateSpec>(TEMPLATE_CATALOG.map((spec) => [spec.id, spec]));
@@ -208,6 +332,12 @@ export function getTemplateSpec(templateId: string): TemplateSpec {
 
 export const TEMPLATE_GROUPS: TemplateGroup[] = [
   '原样还原',
+  '经典单栏',
+  '左侧栏',
+  '顶部Banner',
+  '双栏分割',
+  '衬线极简',
+  '活力标签',
   '极简黑白',
   '蓝色商务',
   '深色横幅',
@@ -215,4 +345,16 @@ export const TEMPLATE_GROUPS: TemplateGroup[] = [
   '侧栏双栏',
   '时间线',
   '图标标题',
+  '极客单栏',
+  '技术侧栏',
+  '迭代时间线',
+  '终端头条',
+  '精英单栏',
+  '职场侧栏',
+  '履历时间线',
+  '沉稳头条',
+  '活力单栏',
+  '运营侧栏',
+  '战绩时间线',
+  '促销头条',
 ];

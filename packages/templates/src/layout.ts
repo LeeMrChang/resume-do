@@ -9,6 +9,8 @@ export interface TemplateLayout {
   mainGapPx: number;
   asideSections: string[];
   asideTone: 'dark' | 'light';
+  asideSide: 'left' | 'right';
+  headerInAside: boolean;
   hasAside: boolean;
 }
 
@@ -23,6 +25,8 @@ export function getTemplateLayout(templateId: string): TemplateLayout {
       mainGapPx: 0,
       asideSections: [],
       asideTone: 'light',
+      asideSide: 'left',
+      headerInAside: true,
       hasAside: false,
     };
   }
@@ -33,6 +37,8 @@ export function getTemplateLayout(templateId: string): TemplateLayout {
     mainGapPx: spec.layout === 'split' ? 22 : 26,
     asideSections: spec.asideSections ?? [],
     asideTone: spec.sidebarTone ?? 'light',
+    asideSide: spec.asideSide ?? 'left',
+    headerInAside: spec.headerInAside !== false,
     hasAside: true,
   };
 }
@@ -43,7 +49,8 @@ export function splitBlocks(blocks: ResumeBlock[], layout: TemplateLayout): Bloc
   const aside: ResumeBlock[] = [];
   const main: ResumeBlock[] = [];
   for (const block of blocks) {
-    if (block.kind === 'header' || (block.sectionId && asideSections.has(block.sectionId))) {
+    const inHeader = block.kind === 'header' && layout.headerInAside;
+    if (inHeader || (block.kind !== 'header' && block.sectionId && asideSections.has(block.sectionId))) {
       aside.push(block);
     } else {
       main.push(block);

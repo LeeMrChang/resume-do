@@ -160,9 +160,9 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number, spec: Retur
       id: `${prefix}-title`,
       kind: 'section',
       keepWithNext: true,
-      html: `<h2 class="r-section-title" data-section="${escapeHtml(section.id)}">${escapeHtml(
+      html: `<h2 class="r-section-title" data-section="${escapeHtml(section.id)}"><span class="r-title-text">${escapeHtml(
         section.title,
-      )}</h2>`,
+      )}</span></h2>`,
       plainText: section.title,
     });
 
@@ -178,9 +178,9 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number, spec: Retur
     id: `${prefix}-title`,
     kind: 'section',
     keepWithNext: true,
-    html: `<h2 class="r-section-title" data-section="${escapeHtml(section.id)}">${escapeHtml(
+    html: `<h2 class="r-section-title" data-section="${escapeHtml(section.id)}"><span class="r-title-text">${escapeHtml(
       section.title,
-    )}</h2>`,
+    )}</span></h2>`,
     plainText: section.title,
   });
 
@@ -201,16 +201,24 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number, spec: Retur
             item.role.trim() ? `<span class="r-record-role">${escapeHtml(item.role)}</span>` : '<span></span>',
             '</div>',
           ].join('')
-        : [
-            '<div class="r-record">',
-            `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
-            range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '',
-            '</div>',
-          ].join(''),
+        : spec.inlineRole
+          ? [
+              '<div class="r-record r-record-combo">',
+              `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
+              item.role.trim() ? `<span class="r-record-role">· ${escapeHtml(item.role)}</span>` : '',
+              range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '',
+              '</div>',
+            ].join('')
+          : [
+              '<div class="r-record">',
+              `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
+              range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '',
+              '</div>',
+            ].join(''),
       plainText: `${item.title} ${item.role} ${range}`.trim(),
     });
 
-    if (!spec.recordInline && item.role.trim()) {
+    if (!spec.recordInline && !spec.inlineRole && item.role.trim()) {
       blocks.push({
         id: `${prefix}-r${recordIndex}-role`,
         kind: 'role',

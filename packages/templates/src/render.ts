@@ -39,9 +39,9 @@ function sideTheme(input: RenderInput): Record<string, string> {
   const layout = getTemplateLayout(appearance.templateId);
   const dark = layout.hasAside && layout.asideTone === 'dark';
   return {
-    '--r-sidebar-bg': dark ? (spec.sidebarBg ?? spec.accent) : spec.tint,
-    '--r-sidebar-ink': dark ? (spec.sidebarInk ?? '#f2f7fa') : spec.ink,
-    '--r-side-heading': dark ? (spec.sidebarInk ?? '#f2f7fa') : spec.ink,
+    '--r-sidebar-bg': spec.sidebarBg ?? (dark ? spec.accent : spec.tint),
+    '--r-sidebar-ink': spec.sidebarInk ?? (dark ? '#f2f7fa' : spec.ink),
+    '--r-side-heading': spec.sidebarInk ?? (dark ? '#f2f7fa' : spec.ink),
     '--r-side-muted': dark ? 'rgba(255,255,255,0.72)' : '#5f6b75',
     '--r-side-line': dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.12)',
     '--r-side-accent': dark ? '#ffffff' : appearance.themeColor,
@@ -68,6 +68,8 @@ function pageStyle(input: RenderInput): string {
     '--r-main-gap': `${layout.mainGapPx}px`,
     '--r-side-pad': `${SIDEBAR_PADDING_PX}px`,
     '--r-aside-content-width': `${metrics.asideContentWidthPx}px`,
+    '--r-card': spec.cardBg ?? spec.tint,
+    '--r-page-bg': spec.pageBg ?? '#ffffff',
     ...side,
   };
   return Object.entries(vars)
@@ -82,11 +84,19 @@ function styleClass(appearance: ResumeAppearance): string {
   return [
     `tpl-${spec.id}`,
     `layout-${spec.layout}`,
+    layout.hasAside ? `aside-${layout.asideSide}` : '',
     `hdr-${spec.header}`,
     `sec-${spec.section}`,
+    spec.cards ? 'has-cards' : '',
+    spec.plainContacts ? 'plain-contacts' : '',
+    spec.photoRight ? 'photo-order-right' : '',
+    spec.artBold ? 'art-bold' : '',
+    spec.squareNodes ? 'tl-square' : '',
     tone,
-    `font-${appearance.fontId}`,
-  ].join(' ');
+    `font-${spec.font ?? appearance.fontId}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 export function renderBlockHtml(block: ResumeBlock): string {
@@ -120,6 +130,28 @@ export function renderAsideMeasureFragment(input: RenderInput, blocks: ResumeBlo
     .join('')}</div>`;
 }
 
+/** Card skins wrap each section body in one tinted panel; the wrapper adds no vertical space. */
+function renderCardBlocks(blocks: ResumeBlock[]): string {
+  const out: string[] = [];
+  let index = 0;
+  while (index < blocks.length) {
+    const block = blocks[index];
+    const sectionId = block.sectionId;
+    if (block.kind === 'section' || !sectionId) {
+      out.push(renderBlockHtml(block));
+      index += 1;
+      continue;
+    }
+    const group: ResumeBlock[] = [];
+    while (index < blocks.length && blocks[index].kind !== 'section' && blocks[index].sectionId === sectionId) {
+      group.push(blocks[index]);
+      index += 1;
+    }
+    out.push(`<div class="r-card-group">${group.map(renderBlockHtml).join('')}</div>`);
+  }
+  return out.join('');
+}
+
 export function renderPagesFragment(
   input: RenderInput,
   pages: ResumeBlock[][],
@@ -129,10 +161,11 @@ export function renderPagesFragment(
   const classes = `r-page ${styleClass(input.appearance)}`;
   const total = Math.max(1, pages.length);
   const metrics = getPageMetrics(input.appearance);
-  const showFooter = getTemplateSpec(input.appearance.templateId).showFooter !== false;
+  const spec = getTemplateSpec(input.appearance.templateId);
+  const showFooter = spec.showFooter !== false;
   return pages
     .map((blocks, index) => {
-      const content = blocks.map(renderBlockHtml).join('');
+      const content = spec.cards ? renderCardBlocks(blocks) : blocks.map(renderBlockHtml).join('');
       const footer = showFooter ? `<div class="r-footer">${index + 1} / ${total}</div>` : '';
       if (metrics.hasAside) {
         const aside = asideBlocks.map(renderBlockHtml).join('');

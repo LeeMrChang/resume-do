@@ -176,10 +176,10 @@ test('imported template mirrors source layout: labelled meta grid, inline record
   assert.equal(getPageMetrics(appearance).footerReservePx, 0);
 });
 
-test('catalog covers all 59 reference IDs plus the imported template, and legacy IDs resolve', () => {
-  assert.equal(TEMPLATE_IDS.length, 59);
-  assert.equal(TEMPLATE_CATALOG.length, 60);
-  assert.equal(new Set(TEMPLATE_CATALOG.map(spec => spec.id)).size, 60);
+test('catalog covers all 259 reference IDs plus the imported template, and legacy IDs resolve', () => {
+  assert.equal(TEMPLATE_IDS.length, 259);
+  assert.equal(TEMPLATE_CATALOG.length, 260);
+  assert.equal(new Set(TEMPLATE_CATALOG.map(spec => spec.id)).size, 260);
   assert.deepEqual(
     [...TEMPLATE_CATALOG.map(spec => spec.id)].sort(),
     [...TEMPLATE_IDS, 'imported'].sort(),
