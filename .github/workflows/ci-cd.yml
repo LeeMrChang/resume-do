@@ -25,6 +25,7 @@ jobs:
       any: ${{ steps.plan.outputs.any }}
       services: ${{ steps.plan.outputs.services }}
       integration: ${{ steps.plan.outputs.integration }}
+      docker_validation: ${{ steps.plan.outputs.docker_validation }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -67,6 +68,10 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -m unittest discover -s scripts/tests -v
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - run: node --test scripts/tests/*.test.mjs
       - name: Validate workflow syntax
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci-cd.yml
 
@@ -116,6 +121,29 @@ jobs:
             npm run typecheck -w @resume-do/pdf-worker
             npm test -w @resume-do/pdf-worker
             npm run test:pdf -w @resume-do/pdf-worker
+          fi
+      - name: Verify service Docker image and browser runtime
+        if: matrix.service != 'api' && github.event_name == 'pull_request' && needs.plan.outputs.docker_validation == 'true'
+        env:
+          SERVICE: ${{ matrix.service }}
+          DOCKER_BUILDKIT: '0'
+        run: |
+          set -euo pipefail
+          docker build -f "deploy/$SERVICE.Dockerfile" -t "resume-$SERVICE:check" .
+          if [[ "$SERVICE" == web ]]; then
+            docker run --rm --add-host resume-api:127.0.0.1 --entrypoint nginx resume-web:check -t
+          else
+            docker run --rm --entrypoint node resume-worker:check --input-type=module -e '
+              import { chromium } from "playwright";
+              const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+              try {
+                const page = await browser.newPage();
+                await page.setContent("<html><body>Resume Do 中文字体 PDF 检查</body></html>");
+                const pdf = await page.pdf();
+                if (!pdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new Error("Invalid PDF");
+                console.log("Service image Chromium/PDF check passed");
+              } finally { await browser.close(); }
+            '
           fi
 
   integration:

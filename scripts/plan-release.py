@@ -59,6 +59,10 @@ def plan(base, head, full=False):
     migrations = any(p.startswith('apps/api/src/main/resources/db/migration/') for p in changed)
     selected = set(SERVICES) if full or not base or migrations else set().union(*(affected(p) for p in changed))
     return {'services': [s for s in SERVICES if s in selected], 'migrations': migrations or not base,
+            'docker_validation': full or not base or bool(changed & {
+                'deploy/web.Dockerfile', 'deploy/worker.Dockerfile', 'scripts/docker-dependencies.mjs',
+                'scripts/package-release.py', '.dockerignore',
+            }),
             'fingerprints': fingerprints(new), 'commit': subprocess.check_output(['git', 'rev-parse', head], text=True).strip()}
 
 
@@ -78,4 +82,5 @@ if __name__ == '__main__':
             print('services=' + json.dumps(result['services']), file=out)
             print(f'any={str(bool(result["services"])).lower()}', file=out)
             print(f'integration={str(bool(set(result["services"]) & {"api", "worker"})).lower()}', file=out)
+            print(f'docker_validation={str(result["docker_validation"]).lower()}', file=out)
     print(json.dumps(result, indent=2))

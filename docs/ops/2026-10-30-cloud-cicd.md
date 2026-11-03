@@ -168,7 +168,7 @@ Maven 加速：服务器构建显式传入 `https://mirrors.cloud.tencent.com/ne
 - `apps/api/**`、API Dockerfile、Maven 镜像配置：只发布 API；仍执行 API/Flyway/PDF 集成测试。
 - `apps/pdf-worker/**`、worker Dockerfile/健康脚本：只发布 worker；仍执行队列 PDF 集成测试。
 - `packages/templates/**`：Web + worker；`packages/schema/**`、根依赖锁、工作区清单、发布脚本和未知路径保守地检查全部服务。
-- 两个 Node 应用的 package.json 都是两个 Dockerfile 的 COPY 输入，因此这两个清单变更会触发 Web + worker。
+- 两个 Node 应用的 package.json 变更目前仍保守触发 Web + worker；镜像内只安装本服务的依赖。
 - 纯 README/docs/IDE 配置不发布业务容器；数据库迁移变更强制全量并保留停写、备份和迁移失败保护。
 
 不再在 GitHub 与服务器各构建一次镜像。GitHub 分服务并行做源码测试，服务器复用现有 Docker 层缓存，只构建与推送计划内的镜像。发布前验证实际候选镜像：Web 单独更新只做 Nginx 配置检查；涉及 API/worker 时，启动独立的临时 MySQL、文件卷和网络，使用“候选版本 + 未修改服务的线上版本”验证注册、保存与 PDF 下载，结束后仅清理这些临时资源。该验证要求至少 2 GiB 可用内存；内存不足会在切换线上服务前退出。
@@ -180,3 +180,11 @@ Maven 加速：服务器构建显式传入 `https://mirrors.cloud.tencent.com/ne
 `Tests, build and isolated integration` 名称保留为汇总检查，兼容已有分支保护；未涉及的服务检查不运行。涉及同一次变更的多个服务仍以一组通过检查后发布，避免已知不兼容的半套版本上线。
 
 验证范围：发布脚本替身测试覆盖单服务发布、失败回退、旧版本首次升级、基线不一致、数据库迁移保护，以及临时验证资源隔离。真实 Docker/SSH/GitHub Actions 验收仍需在首次全量发布时确认。
+
+### 构建依赖缓存
+
+Web 和 worker 的 Dockerfile 先用 `scripts/docker-dependencies.mjs` 从根锁文件提取各自的依赖闭包，再通过跨阶段 COPY 安装。生成文件保留原有版本、下载地址、完整性校验值及嵌套路径，不重新解析依赖。只改前端字体依赖时，worker 的安装输入不变；只改源码时，npm 安装层可复用。当前发布选择规则仍保守地将根锁文件变更视为全量发布。
+
+worker 将系统字体和 Chromium 放在应用依赖之前的独立镜像阶段，浏览器版本从同一份锁文件提取，与运行时 Playwright 保持一致。普通源码或前端依赖变化不会再次下载安装浏览器。Maven 继续复用 pom.xml 对应的离线依赖层。无需在宿主机安装 npm、Maven 或 Chromium，也不需要切换 BuildKit 或提高构建资源限制。
+
+首次使用新结构会建立新的缓存，耗时可能仍较长；后续发布才能复用这些层。源码包包含生成脚本，涉及 Docker 构建定义的 PR 会实际构建 Web/worker 镜像并验证 Nginx/Chromium PDF，普通源码迭代不额外构建；服务器日志按服务记录构建用时，便于定位剩余耗时。
