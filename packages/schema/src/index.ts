@@ -398,8 +398,11 @@ export const appearanceSchema = z.object({
   fontSize: z.number().int().min(12).max(16).default(14),
   lineHeight: z.number().min(1.2).max(2.2).default(1.5),
   sectionGap: z.number().int().min(5).max(50).default(18),
+  recordGap: z.number().int().min(0).max(16).default(4),
   pageMargin: z.number().int().min(24).max(60).default(42),
   themeColor: z.string().regex(colorPattern).default('#1f5aa6'),
+  sectionTitleTint: z.boolean().default(false),
+  sectionTitleTintColor: z.string().regex(colorPattern).default('#e8eff5'),
 });
 
 export type ResumeBasic = z.infer<typeof basicSchema>;
@@ -542,8 +545,11 @@ export function createDefaultAppearance(): ResumeAppearance {
     fontSize: 14,
     lineHeight: 1.5,
     sectionGap: 18,
+    recordGap: 4,
     pageMargin: 42,
     themeColor: '#1f5aa6',
+    sectionTitleTint: false,
+    sectionTitleTintColor: '#e8eff5',
   };
 }
 

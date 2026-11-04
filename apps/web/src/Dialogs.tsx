@@ -209,6 +209,15 @@ export function AppearanceDialog({
             onChange={(value) => onChange({ ...appearance, sectionGap: value })}
           />
           <RangeField
+            label="条目间距"
+            value={appearance.recordGap}
+            min={0}
+            max={16}
+            step={1}
+            suffix="px"
+            onChange={(value) => onChange({ ...appearance, recordGap: value })}
+          />
+          <RangeField
             label="行间距"
             value={appearance.lineHeight}
             min={1.2}
@@ -284,6 +293,25 @@ export function AppearanceDialog({
             />
             <code>{appearance.themeColor}</code>
           </label>
+          <label className="inline-color">
+            <input
+              type="checkbox"
+              checked={appearance.sectionTitleTint}
+              onChange={(event) => onChange({ ...appearance, sectionTitleTint: event.target.checked })}
+            />
+            小节标题底色
+          </label>
+          {appearance.sectionTitleTint && (
+            <label className="inline-color">
+              标题底色
+              <input
+                type="color"
+                value={appearance.sectionTitleTintColor}
+                onChange={(event) => onChange({ ...appearance, sectionTitleTintColor: event.target.value })}
+              />
+              <code>{appearance.sectionTitleTintColor}</code>
+            </label>
+          )}
         </>
       )}
 

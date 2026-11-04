@@ -99,7 +99,13 @@ test('rejects duplicate section ids', () => {
 test('default appearance stays inside the agreed ranges', () => {
   const appearance = createDefaultAppearance();
   assert.ok(appearance.fontSize >= 12 && appearance.fontSize <= 16);
+  assert.ok(appearance.recordGap >= 0 && appearance.recordGap <= 16);
   assert.ok(appearance.pageMargin >= 24 && appearance.pageMargin <= 60);
+  assert.equal(appearance.sectionTitleTint, false);
+  assert.match(appearance.sectionTitleTintColor, /^#[0-9a-fA-F]{6}$/);
+  const tinted = safeParseAppearance({ ...appearance, sectionTitleTint: true, sectionTitleTintColor: '#e5f1e5' });
+  assert.equal(tinted.success, true);
+  assert.equal(safeParseAppearance({ ...appearance, sectionTitleTintColor: 'green' }).success, false);
 });
 
 test('accepts the expanded template set', () => {

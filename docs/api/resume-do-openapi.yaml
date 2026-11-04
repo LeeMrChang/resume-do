@@ -565,8 +565,11 @@ paths:
                 fontSize: 14
                 lineHeight: 1.5
                 sectionGap: 18
+                recordGap: 4
                 pageMargin: 42
                 themeColor: "#1f5aa6"
+                sectionTitleTint: false
+                sectionTitleTintColor: "#e8eff5"
       responses:
         "201":
           description: 创建成功
@@ -654,8 +657,11 @@ paths:
                 fontSize: 14
                 lineHeight: 1.5
                 sectionGap: 18
+                recordGap: 4
                 pageMargin: 42
                 themeColor: "#1f5aa6"
+                sectionTitleTint: false
+                sectionTitleTintColor: "#e8eff5"
       responses:
         "200":
           description: 保存后的简历
@@ -1151,8 +1157,11 @@ paths:
                   fontSize: 14
                   lineHeight: 1.5
                   sectionGap: 18
+                  recordGap: 4
                   pageMargin: 42
                   themeColor: "#1f5aa6"
+                  sectionTitleTint: false
+                  sectionTitleTintColor: "#e8eff5"
       responses:
         "200":
           description: 保存后的任务（version 已递增）
@@ -2086,8 +2095,11 @@ components:
           fontSize: 14
           lineHeight: 1.5
           sectionGap: 18
+          recordGap: 4
           pageMargin: 42
           themeColor: "#1f5aa6"
+          sectionTitleTint: false
+          sectionTitleTintColor: "#e8eff5"
         createdAt: "2026-10-30T08:00:00Z"
         updatedAt: "2026-10-30T08:12:34.567Z"
         source:
@@ -2406,6 +2418,12 @@ components:
           minimum: 5
           maximum: 50
           default: 18
+        recordGap:
+          type: integer
+          minimum: 0
+          maximum: 16
+          default: 4
+          description: 条目标题与正文之间的间距（px）
         pageMargin:
           type: integer
           minimum: 24
@@ -2416,6 +2434,15 @@ components:
           pattern: '^#[0-9a-fA-F]{6}$'
           default: "#1f5aa6"
           description: 主题色，必须为 `#RRGGBB`
+        sectionTitleTint:
+          type: boolean
+          default: false
+          description: 是否为小节标题添加底色块
+        sectionTitleTintColor:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+          default: "#e8eff5"
+          description: 小节标题底色，必须为 `#RRGGBB`
 
     CreateResumeRequest:
       type: object

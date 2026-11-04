@@ -232,3 +232,27 @@ test('every typeface id has a font stack and reaches the page class', () => {
   );
   assert.ok(html.includes('font-lxgw-wenkai'));
 });
+
+test('record gap reaches the page style and the stylesheet', () => {
+  const html = renderPagesFragment(
+    { document: SAMPLE_DOCUMENT, appearance: { ...SAMPLE_APPEARANCE, recordGap: 9 } },
+    [[]],
+  );
+  assert.ok(html.includes('--r-record-gap:9px'));
+  assert.ok(RESUME_CSS.includes('padding-bottom: var(--r-record-gap'));
+});
+
+test('section title tint is opt-in per page', () => {
+  const plain = renderPagesFragment({ document: SAMPLE_DOCUMENT, appearance: SAMPLE_APPEARANCE }, [[]]);
+  assert.ok(!plain.includes(' title-tint'));
+  const tinted = renderPagesFragment(
+    {
+      document: SAMPLE_DOCUMENT,
+      appearance: { ...SAMPLE_APPEARANCE, sectionTitleTint: true, sectionTitleTintColor: '#e5f1e5' },
+    },
+    [[]],
+  );
+  assert.ok(tinted.includes(' title-tint'));
+  assert.ok(tinted.includes('--r-title-tint:#e5f1e5'));
+  assert.ok(RESUME_CSS.includes('background: var(--r-title-tint)'));
+});

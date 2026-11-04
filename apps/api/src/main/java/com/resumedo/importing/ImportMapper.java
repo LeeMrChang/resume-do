@@ -143,11 +143,13 @@ public class ImportMapper {
         var appearance = result.putObject("appearance");
         if (accent != null && accent.matches("#[0-9a-fA-F]{6}")) {
             appearance.put("templateId", "imported"); appearance.put("fontId", "sans"); appearance.put("fontSize", 14);
-            appearance.put("lineHeight", 2.0); appearance.put("sectionGap", 20); appearance.put("pageMargin", 32);
+            appearance.put("lineHeight", 2.0); appearance.put("sectionGap", 20); appearance.put("recordGap", 4); appearance.put("pageMargin", 32);
             appearance.put("themeColor", accent.toLowerCase(Locale.ROOT));
+            appearance.put("sectionTitleTint", false); appearance.put("sectionTitleTintColor", "#e8eff5");
         } else {
             appearance.put("templateId", "1045"); appearance.put("fontId", "sans"); appearance.put("fontSize", 14);
-            appearance.put("lineHeight", 1.5); appearance.put("sectionGap", 18); appearance.put("pageMargin", 42); appearance.put("themeColor", "#1f5aa6");
+            appearance.put("lineHeight", 1.5); appearance.put("sectionGap", 18); appearance.put("recordGap", 4); appearance.put("pageMargin", 42); appearance.put("themeColor", "#1f5aa6");
+            appearance.put("sectionTitleTint", false); appearance.put("sectionTitleTintColor", "#e8eff5");
         }
         return result;
     }

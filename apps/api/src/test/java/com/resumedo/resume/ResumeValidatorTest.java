@@ -37,7 +37,17 @@ class ResumeValidatorTest {
         assertThat(appearance.path("fontSize").asInt()).isEqualTo(14);
         assertThat(appearance.path("lineHeight").asDouble()).isEqualTo(1.5);
         assertThat(appearance.path("sectionGap").asInt()).isEqualTo(18);
+        assertThat(appearance.path("recordGap").asInt()).isEqualTo(4);
         assertThat(appearance.path("pageMargin").asInt()).isEqualTo(42);
+        assertThat(appearance.path("sectionTitleTint").asBoolean()).isFalse();
+        assertThat(appearance.path("sectionTitleTintColor").asText()).isEqualTo("#e8eff5");
+    }
+
+    @Test
+    void rejectsInvalidSectionTitleTintColor() {
+        ObjectNode appearance = appearanceWithThemeColor("#2563eb");
+        appearance.put("sectionTitleTintColor", "green");
+        assertBadRequest(() -> validator.validate(validDocument(), appearance), "小节标题底色必须是 #RRGGBB 格式");
     }
 
     @Test

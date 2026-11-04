@@ -180,10 +180,20 @@ public class ResumeValidator {
         intInRange(appearance, "fontSize", 12, 16, 14, "字号");
         numberInRange(appearance, "lineHeight", 1.2, 2.2, 1.5, "行高");
         intInRange(appearance, "sectionGap", 5, 50, 18, "模块间距");
+        intInRange(appearance, "recordGap", 0, 16, 4, "条目间距");
         intInRange(appearance, "pageMargin", 24, 60, 42, "页面边距");
         String color = text(appearance, "themeColor", 7, "主题色");
         if (!COLOR.matcher(color).matches()) {
             throw ApiException.badRequest("主题色必须是 #RRGGBB 格式");
+        }
+        bool(appearance, "sectionTitleTint", false, "小节标题底色");
+        JsonNode tintNode = appearance.get("sectionTitleTintColor");
+        if (tintNode == null || tintNode.isNull()) {
+            appearance.put("sectionTitleTintColor", "#e8eff5");
+        }
+        String tintColor = text(appearance, "sectionTitleTintColor", 7, "小节标题底色");
+        if (!COLOR.matcher(tintColor).matches()) {
+            throw ApiException.badRequest("小节标题底色必须是 #RRGGBB 格式");
         }
 
         return new Validated(document, appearance, schemaVersion, templateId);

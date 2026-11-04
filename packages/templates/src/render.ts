@@ -60,6 +60,8 @@ function pageStyle(input: RenderInput): string {
     '--r-tint': spec.tint,
     '--r-ink': spec.ink,
     '--r-gap': `${appearance.sectionGap}px`,
+    '--r-record-gap': `${appearance.recordGap}px`,
+    '--r-title-tint': appearance.sectionTitleTintColor,
     '--r-margin': `${metrics.marginPx}px`,
     '--r-font-size': `${appearance.fontSize}px`,
     '--r-line-height': `${appearance.lineHeight}`,
@@ -94,6 +96,7 @@ function styleClass(appearance: ResumeAppearance): string {
     spec.squareNodes ? 'tl-square' : '',
     tone,
     `font-${spec.font ?? appearance.fontId}`,
+    appearance.sectionTitleTint ? 'title-tint' : '',
   ]
     .filter(Boolean)
     .join(' ');

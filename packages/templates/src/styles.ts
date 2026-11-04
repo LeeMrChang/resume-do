@@ -225,6 +225,7 @@ export const RESUME_CSS = `
   justify-content: space-between;
   gap: 12px;
   padding-top: 8px;
+  padding-bottom: var(--r-record-gap, 4px);
   font-weight: 700;
   color: var(--r-ink);
 }
@@ -747,6 +748,16 @@ export const RESUME_CSS = `
   border: 0;
   border-radius: 2px;
   background: var(--r-accent);
+}
+
+.title-tint .r-content .r-section-title,
+.title-tint.r-measure .r-section-title {
+  padding: 4px 10px;
+  margin-left: -10px;
+  border-bottom: 0;
+  border-radius: 3px;
+  background: var(--r-title-tint);
+  color: var(--r-ink);
 }
 
 .font-sans {

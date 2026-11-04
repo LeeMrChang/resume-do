@@ -64,8 +64,11 @@ public final class TestFixtures {
                   "fontSize": 14,
                   "lineHeight": 1.5,
                   "sectionGap": 18,
+                  "recordGap": 4,
                   "pageMargin": 42,
-                  "themeColor": "#2563eb"
+                  "themeColor": "#2563eb",
+                  "sectionTitleTint": false,
+                  "sectionTitleTintColor": "#e8eff5"
                 }
                 """;
     }
