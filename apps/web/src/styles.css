@@ -201,18 +201,18 @@ input[readonly] {
 }
 
 .topbar {
-  height: 68px;
+  height: 54px;
   flex-shrink: 0;
   background: var(--surface);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 28px;
+  gap: 12px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--line);
 }
 
 .logo {
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -220,9 +220,9 @@ input[readonly] {
 .logo span {
   background: var(--brand-fill);
   color: var(--on-emphasis);
-  border-radius: 9px;
-  padding: 4px 8px;
-  margin-right: 9px;
+  border-radius: 8px;
+  padding: 3px 7px;
+  margin-right: 7px;
 }
 
 .badge {
@@ -251,7 +251,7 @@ input[readonly] {
 .title-input {
   border: 1px solid transparent;
   background: transparent;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   padding: 2px 6px;
   width: 100%;
@@ -312,14 +312,14 @@ input[readonly] {
 }
 
 .toolbar {
-  height: 68px;
+  height: 50px;
   flex-shrink: 0;
   background: var(--surface);
-  padding: 0 28px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -327,17 +327,17 @@ input[readonly] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   border-color: transparent;
-  padding: 6px 14px;
-  font-size: 12px;
+  padding: 3px 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
 .tool-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   background: var(--brand-fill);
   color: var(--on-emphasis);
   display: grid;
@@ -345,8 +345,8 @@ input[readonly] {
 }
 
 .tool-icon svg {
-  width: 17px;
-  height: 17px;
+  width: 15px;
+  height: 15px;
 }
 
 .workspace {
@@ -365,7 +365,7 @@ input[readonly] {
 
 .canvas {
   overflow: auto;
-  padding: 24px 32px 36px;
+  padding: 16px 32px 32px;
   background: var(--canvas-inset);
   position: relative;
 }
@@ -375,7 +375,7 @@ input[readonly] {
   align-items: center;
   justify-content: space-between;
   max-width: 850px;
-  margin: 0 auto 18px;
+  margin: 0 auto 12px;
   color: var(--fg-muted);
   font-size: 12px;
 }
@@ -1959,7 +1959,7 @@ input[readonly] {
   }
 
   .toolbar button {
-    padding: 7px 9px;
+    padding: 4px 9px;
   }
 
   .editor {
