@@ -1,9 +1,66 @@
-import type { ResumeDocument, ResumeRecordItem, ResumeSection } from '@resume-do/schema';
-import { stripTags, ageFromBirthMonth } from '@resume-do/schema';
+import type {
+  BasicFieldKey,
+  ResumeBasic,
+  ResumeDocument,
+  ResumeRecordItem,
+  ResumeSection,
+} from '@resume-do/schema';
+import { stripTags, ageFromBirthMonth, basicFieldOrder, intentFieldOrder } from '@resume-do/schema';
 import { getTemplateSpec } from './catalog';
 import { escapeHtml, richBlocks } from './rich';
 import type { RenderInput, ResumeBlock } from './types';
 import { contactIcon, type ContactIcon } from './icons';
+
+const BASIC_LABELS: Record<BasicFieldKey, string> = {
+  gender: '性别',
+  city: '城市',
+  experienceYears: '工作年限',
+  phone: '电话',
+  email: '邮箱',
+  birthMonth: '出生年月',
+  age: '年龄',
+  nativePlace: '籍贯',
+  ethnicity: '民族',
+  maritalStatus: '婚姻状况',
+  politicalStatus: '政治面貌',
+  height: '身高',
+  weight: '体重',
+};
+
+/** The compact top line used by every non-classic header. */
+const MODERN_META_KEYS: ReadonlySet<BasicFieldKey> = new Set([
+  'gender',
+  'city',
+  'experienceYears',
+  'phone',
+  'email',
+]);
+
+/** Classic grid order when the user has not customised it. */
+const CLASSIC_ROW_KEYS: readonly BasicFieldKey[] = [
+  'age',
+  'gender',
+  'nativePlace',
+  'experienceYears',
+  'phone',
+  'email',
+  'city',
+  'birthMonth',
+  'ethnicity',
+  'maritalStatus',
+  'politicalStatus',
+  'height',
+  'weight',
+];
+
+function basicValue(basic: ResumeBasic, key: BasicFieldKey): string {
+  if (key === 'age') return basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age ?? '';
+  return basic[key] ?? '';
+}
+
+function basicEntry(basic: ResumeBasic, key: BasicFieldKey) {
+  return { icon: key as ContactIcon, label: BASIC_LABELS[key], value: basicValue(basic, key) };
+}
 
 function hasText(html: string): boolean {
   return stripTags(html).trim().length > 0;
@@ -37,16 +94,19 @@ function headerBlock(input: RenderInput): ResumeBlock {
   const intent = document.intent;
   const spec = getTemplateSpec(appearance.templateId);
   const classic = spec.header === 'classic';
+  const intentValues = intentFieldOrder(intent).map(key => intent[key]).filter(Boolean);
   const intentLine = classic
     ? intent.role || intent.city
-      ? `求职意向：${[intent.role, intent.city, intent.salary, intent.arrival].filter(Boolean).join('｜')}`
+      ? `求职意向：${intentValues.join('｜')}`
       : ''
-    : [intent.role, intent.city, intent.salary, intent.arrival].filter(Boolean).join(' · ');
-  const metaKeys: ContactIcon[] = ['gender', 'city', 'experienceYears', 'phone', 'email'];
-  const metaItems = metaKeys.flatMap(key => {
-    const value = basic[key];
-    return value ? [{ key, value }] : [];
-  });
+    : intentValues.join(' · ');
+  const basicKeys = basicFieldOrder(basic);
+  const metaItems = basicKeys
+    .filter(key => MODERN_META_KEYS.has(key))
+    .flatMap(key => {
+      const value = basic[key];
+      return value ? [{ key, value }] : [];
+    });
   const showPhoto = spec.photo !== false && basic.showPhoto !== false;
   const name = basic.name || '你的姓名';
   const initial = Array.from(name)[0] ?? '简';
@@ -55,20 +115,9 @@ function headerBlock(input: RenderInput): ResumeBlock {
     : `<span class="r-initial">${escapeHtml(initial)}</span>`;
 
   if (classic) {
+    const rowKeys = Array.isArray(basic.fieldOrder) && basic.fieldOrder.length ? basicKeys : CLASSIC_ROW_KEYS;
     const rows = ([
-      { icon: 'age', label: '年龄', value: basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age },
-      { icon: 'gender', label: '性别', value: basic.gender },
-      { icon: 'nativePlace', label: '籍贯', value: basic.nativePlace },
-      { icon: 'experienceYears', label: '工作年限', value: basic.experienceYears },
-      { icon: 'phone', label: '电话', value: basic.phone },
-      { icon: 'email', label: '邮箱', value: basic.email },
-      { icon: 'city', label: '城市', value: basic.city },
-      { icon: 'birthMonth', label: '出生年月', value: basic.birthMonth },
-      { icon: 'ethnicity', label: '民族', value: basic.ethnicity },
-      { icon: 'maritalStatus', label: '婚姻状况', value: basic.maritalStatus },
-      { icon: 'politicalStatus', label: '政治面貌', value: basic.politicalStatus },
-      { icon: 'height', label: '身高', value: basic.height },
-      { icon: 'weight', label: '体重', value: basic.weight },
+      ...rowKeys.map(key => basicEntry(basic, key)),
       ...(basic.customFields ?? []),
     ] as { icon?: ContactIcon; label: string; value?: string }[]).filter(
       (row): row is { icon?: ContactIcon; label: string; value: string } => Boolean(row.value),
@@ -101,14 +150,7 @@ function headerBlock(input: RenderInput): ResumeBlock {
   }
 
   const extras: { icon?: ContactIcon; label: string; value?: string }[] = [
-    { icon: 'birthMonth', label: '出生年月', value: basic.birthMonth },
-    { icon: 'age', label: '年龄', value: basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age },
-    { icon: 'nativePlace', label: '籍贯', value: basic.nativePlace },
-    { icon: 'ethnicity', label: '民族', value: basic.ethnicity },
-    { icon: 'maritalStatus', label: '婚姻状况', value: basic.maritalStatus },
-    { icon: 'politicalStatus', label: '政治面貌', value: basic.politicalStatus },
-    { icon: 'height', label: '身高', value: basic.height },
-    { icon: 'weight', label: '体重', value: basic.weight },
+    ...basicKeys.filter(key => !MODERN_META_KEYS.has(key)).map(key => basicEntry(basic, key)),
     ...(basic.customFields ?? []).map(pair => ({ label: pair.label, value: pair.value })),
   ];
   const extraLine = extras.filter(({ value }) => value).map(({ icon, label, value }) =>

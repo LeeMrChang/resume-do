@@ -294,6 +294,29 @@ export function ageFromBirthMonth(month: string | undefined, now = new Date()): 
   return age >= 0 && age <= 150 ? `${age}岁` : '';
 }
 
+/** Sortable contact fields; name and photo stay fixed at the top of the resume. */
+export const BASIC_FIELD_KEYS = [
+  'gender',
+  'city',
+  'experienceYears',
+  'phone',
+  'email',
+  'birthMonth',
+  'age',
+  'nativePlace',
+  'ethnicity',
+  'maritalStatus',
+  'politicalStatus',
+  'height',
+  'weight',
+] as const;
+
+export type BasicFieldKey = (typeof BASIC_FIELD_KEYS)[number];
+
+export const INTENT_FIELD_KEYS = ['role', 'city', 'salary', 'arrival'] as const;
+
+export type IntentFieldKey = (typeof INTENT_FIELD_KEYS)[number];
+
 export const basicSchema = z.object({
   birthMonth: z.string().regex(/^$|^\d{4}-(0[1-9]|1[0-2])$/).optional(),
   age: z.string().max(30).optional(),
@@ -303,6 +326,9 @@ export const basicSchema = z.object({
   politicalStatus: z.string().max(50).optional(),
   height: z.string().max(50).optional(),
   weight: z.string().max(50).optional(),
+  fieldOrder: z.array(z.enum(BASIC_FIELD_KEYS)).max(BASIC_FIELD_KEYS.length)
+    .refine((keys) => new Set(keys).size === keys.length, '排序字段不能重复')
+    .optional(),
   showPhoto: z.boolean().optional(),
   customFields: z.array(z.object({ label: z.string().max(30), value: z.string().max(100) })).max(20).optional(),
   name: z.string().max(50).default(''),
@@ -321,6 +347,9 @@ export const intentSchema = z.object({
   city: z.string().max(50).default(''),
   salary: z.string().max(50).default(''),
   arrival: z.string().max(50).default(''),
+  fieldOrder: z.array(z.enum(INTENT_FIELD_KEYS)).max(INTENT_FIELD_KEYS.length)
+    .refine((keys) => new Set(keys).size === keys.length, '排序字段不能重复')
+    .optional(),
 });
 
 export const recordItemSchema = z
@@ -413,6 +442,30 @@ export type ResumeDocument = z.infer<typeof resumeDocumentSchema>;
 export type ResumeAppearance = z.infer<typeof appearanceSchema>;
 export type SectionType = ResumeSection['type'];
 
+/**
+ * Stable sort: saved order wins, fields missing from the saved order keep their
+ * canonical position after the ordered ones.
+ */
+export function orderFields<T extends string>(keys: readonly T[], order?: readonly string[]): T[] {
+  if (!Array.isArray(order) || order.length === 0) return [...keys];
+  const rank = new Map<string, number>();
+  order.forEach((key, index) => {
+    if (!rank.has(key)) rank.set(key, index);
+  });
+  return keys
+    .map((key, index) => ({ key, index, rank: rank.get(key) ?? Number.MAX_SAFE_INTEGER }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.key);
+}
+
+export function basicFieldOrder(basic: Pick<ResumeBasic, 'fieldOrder'>): BasicFieldKey[] {
+  return orderFields(BASIC_FIELD_KEYS, basic.fieldOrder);
+}
+
+export function intentFieldOrder(intent: Pick<ResumeIntent, 'fieldOrder'>): IntentFieldKey[] {
+  return orderFields(INTENT_FIELD_KEYS, intent.fieldOrder);
+}
+
 export function newId(prefix = 'id'): string {
   const random =
     typeof globalThis.crypto?.randomUUID === 'function'
@@ -451,17 +504,17 @@ export function stripTags(html: string): string {
 }
 
 export function totalTextLength(doc: ResumeDocument): number {
-  const { photo: _photo, customFields = [], ...basic } = doc.basic;
+  const { photo: _photo, customFields = [], fieldOrder: _fieldOrder, ...basic } = doc.basic;
   const basicLength = Object.values(basic).filter(value => typeof value === 'string').join('').length
     + customFields.reduce((total, pair) => total + pair.label.length + pair.value.length, 0);
-  const intent = Object.values(doc.intent).join('').length;
+  const { fieldOrder: _intentFieldOrder, ...intent } = doc.intent;
   let body = 0;
   for (const section of doc.sections) {
     for (const item of section.items) {
       body += stripTags(item.body).length;
     }
   }
-  return basicLength + intent + body;
+  return basicLength + Object.values(intent).join('').length + body;
 }
 
 type CanonicalSectionSpec = Pick<ResumeSection, 'id' | 'type' | 'title' | 'visible'>;
@@ -705,7 +758,7 @@ export function isBlankDocument(document: ResumeDocument): boolean {
   ];
   if (textFields.some((value) => (value ?? '').trim() !== '')) return false;
   if ((basic.customFields?.length ?? 0) > 0) return false;
-  if (Object.values(document.intent).some((value) => value.trim() !== '')) return false;
+  if (INTENT_FIELD_KEYS.some((key) => document.intent[key].trim() !== '')) return false;
   return !hasSectionContent(document);
 }
 

@@ -50,6 +50,10 @@ public class ResumeValidator {
             "2150", "2151", "2152", "2153", "2154", "2155", "2156", "2157", "2158", "2159",
             "2160", "2161", "2162", "2163", "2164", "2165", "2166", "2167", "2168", "2169");
     private static final Pattern PHOTO = Pattern.compile("^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$");
+    private static final Set<String> BASIC_FIELD_KEYS = Set.of(
+            "gender", "city", "experienceYears", "phone", "email", "birthMonth", "age",
+            "nativePlace", "ethnicity", "maritalStatus", "politicalStatus", "height", "weight");
+    private static final Set<String> INTENT_FIELD_KEYS = Set.of("role", "city", "salary", "arrival");
     private static final Safelist SAFELIST = Safelist.none()
             .addTags("p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li", "a")
             .addAttributes("a", "href", "rel")
@@ -98,12 +102,14 @@ public class ResumeValidator {
         if (!photo.isEmpty() && !PHOTO.matcher(photo).matches()) {
             throw ApiException.badRequest("照片必须是 PNG、JPEG 或 WebP 的内嵌图片");
         }
+        fieldOrder(basic, BASIC_FIELD_KEYS, "基本信息排序");
 
         ObjectNode intent = requireObject(document, "intent", "求职意向");
         total += text(intent, "role", 100, "意向职位").length();
         total += text(intent, "city", 50, "意向城市").length();
         total += text(intent, "salary", 50, "期望薪资").length();
         total += text(intent, "arrival", 50, "到岗时间").length();
+        fieldOrder(intent, INTENT_FIELD_KEYS, "求职意向排序");
 
         JsonNode sectionsNode = document.get("sections");
         if (sectionsNode == null || !sectionsNode.isArray()) {
@@ -247,6 +253,23 @@ public class ResumeValidator {
             throw ApiException.badRequest(label + "格式应为 YYYY-MM");
         }
         return value;
+    }
+
+    /** Optional display order; unknown or non-text entries are rejected instead of silently reordered. */
+    private static void fieldOrder(ObjectNode node, Set<String> allowed, String label) {
+        JsonNode value = node.get("fieldOrder");
+        if (value == null || value.isNull()) {
+            return;
+        }
+        if (!value.isArray() || value.size() > allowed.size()) {
+            throw ApiException.badRequest(label + "格式不正确");
+        }
+        Set<String> seen = new HashSet<>();
+        for (JsonNode entry : value) {
+            if (!entry.isTextual() || !allowed.contains(entry.asText()) || !seen.add(entry.asText())) {
+                throw ApiException.badRequest(label + "格式不正确");
+            }
+        }
     }
 
     private static boolean bool(ObjectNode node, String field, boolean fallback, String label) {

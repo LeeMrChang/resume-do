@@ -1,17 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BASIC_FIELD_KEYS,
   CANONICAL_SECTION_IDS,
   FONT_IDS,
+  INTENT_FIELD_KEYS,
   SAMPLE_DOCUMENT,
   ALL_TEMPLATE_IDS,
+  basicFieldOrder,
   createDefaultAppearance,
   createDefaultDocument,
   createSampleDocument,
   ensureCanonicalSections,
+  intentFieldOrder,
   isBlankDocument,
+  orderFields,
   safeParseAppearance,
   safeParseDocument,
+  totalTextLength,
 } from './index';
 
 test('default document and sample are valid', () => {
@@ -135,4 +141,41 @@ test('photos accept embedded images only, stay bounded and do not consume text b
   assert.equal(safeParseDocument(doc).success, false);
   doc.basic.photo = 'data:image/png;base64,' + 'A'.repeat(400_000);
   assert.equal(safeParseDocument(doc).success, false);
+});
+
+test('field order keeps every field once and preserves canonical positions for unknowns', () => {
+  assert.deepEqual(orderFields(['a', 'b', 'c']), ['a', 'b', 'c']);
+  assert.deepEqual(orderFields(['a', 'b', 'c'], ['c', 'a']), ['c', 'a', 'b']);
+  assert.deepEqual(orderFields(['a', 'b', 'c'], ['c', 'a', 'c']), ['c', 'a', 'b'], 'duplicates do not break the sort');
+  assert.deepEqual(orderFields(['a', 'b', 'c'], ['x', 'b']), ['b', 'a', 'c'], 'unknown keys are ignored');
+  assert.deepEqual(basicFieldOrder({}), [...BASIC_FIELD_KEYS]);
+  assert.deepEqual(intentFieldOrder({}), [...INTENT_FIELD_KEYS]);
+  assert.deepEqual(
+    basicFieldOrder({ fieldOrder: ['phone', 'gender'] }),
+    ['phone', 'gender', ...BASIC_FIELD_KEYS.filter((key) => key !== 'phone' && key !== 'gender')],
+  );
+});
+
+test('field order round-trips through the document schema without changing the text budget', () => {
+  const doc = createDefaultDocument();
+  doc.basic.fieldOrder = ['email', 'phone', 'gender'];
+  doc.basic.email = 'a@b.co';
+  doc.intent.fieldOrder = ['salary', 'role'];
+  doc.intent.salary = '面议';
+  const parsed = safeParseDocument(doc);
+  assert.equal(parsed.success, true);
+  assert.deepEqual(parsed.success && parsed.data.basic.fieldOrder, ['email', 'phone', 'gender']);
+  assert.deepEqual(parsed.success && parsed.data.intent.fieldOrder, ['salary', 'role']);
+  const withoutOrder = createDefaultDocument();
+  withoutOrder.basic.email = 'a@b.co';
+  withoutOrder.intent.salary = '面议';
+  assert.equal(totalTextLength(doc), totalTextLength(withoutOrder), 'order keys must not count as resume text');
+  assert.equal(
+    safeParseDocument({ ...doc, basic: { ...doc.basic, fieldOrder: ['nope'] } }).success,
+    false,
+  );
+  assert.equal(
+    safeParseDocument({ ...doc, intent: { ...doc.intent, fieldOrder: ['role', 'role'] } }).success,
+    false,
+  );
 });

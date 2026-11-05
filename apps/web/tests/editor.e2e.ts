@@ -98,6 +98,46 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     assert.equal(await computedAge.isEditable(), false);
     assert.match(await computedAge.inputValue(), /^\d{1,3}岁$/);
     assert.ok((await page.locator('.pages').innerText()).includes(await computedAge.inputValue()));
+    await page.getByLabel('性别', { exact: true }).fill('男');
+    await page.getByLabel('所在城市', { exact: true }).fill('深圳');
+    await page.getByLabel('联系电话', { exact: true }).fill('13800000000');
+    for (let step = 0; step < 3; step += 1) {
+      await page.getByLabel('联系电话', { exact: true }).hover();
+      await page.getByRole('button', { name: '联系电话上移', exact: true }).click();
+    }
+    await waitForBasic(() => record.document.basic.fieldOrder?.[0] === 'phone');
+    assert.deepEqual(record.document.basic.fieldOrder?.slice(0, 5), ['phone', 'gender', 'city', 'experienceYears', 'email']);
+    const previewMeta = page.locator('.pages .r-meta').first();
+    const metaText = await previewMeta.innerText();
+    assert.ok(metaText.indexOf('13800000000') < metaText.indexOf('男'), 'preview follows the saved field order');
+    assert.ok(metaText.indexOf('男') < metaText.indexOf('深圳'));
+    await page.getByRole('tab', { name: '求职意向', exact: true }).click();
+    await page.getByLabel('意向城市', { exact: true }).fill('深圳');
+    await page.getByLabel('期望薪资', { exact: true }).fill('面议');
+    await page.getByLabel('到岗时间', { exact: true }).fill('一个月内到岗');
+    for (let step = 0; step < 3; step += 1) {
+      await page.getByLabel('到岗时间', { exact: true }).hover();
+      await page.getByRole('button', { name: '到岗时间上移', exact: true }).click();
+    }
+    await waitForBasic(() => record.document.intent.fieldOrder?.[0] === 'arrival');
+    await page.waitForFunction(() => document.querySelector('.pages .r-intent')?.textContent?.startsWith('一个月内到岗 · 技术文档工程师 · 深圳 · 面议') ?? false);
+    await page.reload();
+    await openResume();
+    await page.getByLabel('联系电话', { exact: true }).waitFor();
+    assert.deepEqual(
+      await page.locator('.fields > .field-grid > label, .fields > .field-grid > .field-cell').allTextContents(),
+      ['姓名', '联系电话', '性别', '所在城市', '工作年限', '联系邮箱', '出生年月', '年龄（自动计算）', '籍贯', '民族', '婚姻状况', '政治面貌', '身高', '体重'],
+    );
+    await page.getByLabel('联系电话', { exact: true }).hover();
+    assert.equal(await page.getByRole('button', { name: '联系电话上移', exact: true }).isDisabled(), true);
+    await page.getByRole('tab', { name: '求职意向', exact: true }).click();
+    assert.deepEqual(
+      await page.locator('.fields > .field-grid > label, .fields > .field-grid > .field-cell').allTextContents(),
+      ['到岗时间', '意向职位', '意向城市', '期望薪资'],
+    );
+    await page.getByLabel('到岗时间', { exact: true }).hover();
+    assert.equal(await page.getByRole('button', { name: '到岗时间上移', exact: true }).isDisabled(), true);
+    await page.getByRole('tab', { name: '基本信息', exact: true }).click();
     const before = structuredClone(record);
     await page.getByRole('button', { name: /更换模板/ }).click();
     await page.getByRole('button', { name: /^1015 / }).click();

@@ -269,6 +269,32 @@ class ResumeValidatorTest {
     }
 
     @Test
+    void acceptsKnownFieldOrderAndRejectsUnknownKeys() {
+        ObjectNode document = (ObjectNode) validDocument();
+        ((ObjectNode) document.get("basic")).putArray("fieldOrder").add("phone").add("gender");
+        ((ObjectNode) document.get("intent")).putArray("fieldOrder").add("arrival").add("role");
+
+        JsonNode validated = validator.validate(document, validAppearance()).document();
+        assertThat(validated.path("basic").path("fieldOrder").get(0).asText()).isEqualTo("phone");
+        assertThat(validated.path("intent").path("fieldOrder").get(0).asText()).isEqualTo("arrival");
+
+        ObjectNode unknownKey = (ObjectNode) validDocument();
+        ((ObjectNode) unknownKey.get("basic")).putArray("fieldOrder").add("displayName");
+        assertBadRequest(
+                () -> validator.validate(unknownKey, validAppearance()), "基本信息排序格式不正确");
+
+        ObjectNode duplicated = (ObjectNode) validDocument();
+        ((ObjectNode) duplicated.get("intent")).putArray("fieldOrder").add("role").add("role");
+        assertBadRequest(
+                () -> validator.validate(duplicated, validAppearance()), "求职意向排序格式不正确");
+
+        ObjectNode notAnArray = (ObjectNode) validDocument();
+        ((ObjectNode) notAnArray.get("basic")).put("fieldOrder", "phone");
+        assertBadRequest(
+                () -> validator.validate(notAnArray, validAppearance()), "基本信息排序格式不正确");
+    }
+
+    @Test
     void rejectsContentExceedingTotalLength() {
         JsonNode[] items = new JsonNode[30];
         for (int i = 0; i < items.length; i++) {

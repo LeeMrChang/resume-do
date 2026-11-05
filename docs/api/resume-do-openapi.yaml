@@ -2272,6 +2272,14 @@ components:
         weight:
           type: string
           maxLength: 50
+        fieldOrder:
+          type: array
+          description: 联系信息展示顺序，编辑器与预览共用；省略时按模板默认顺序，姓名与照片始终固定
+          maxItems: 13
+          uniqueItems: true
+          items:
+            type: string
+            enum: [gender, city, experienceYears, phone, email, birthMonth, age, nativePlace, ethnicity, maritalStatus, politicalStatus, height, weight]
         showPhoto:
           type: boolean
           default: true
@@ -2316,6 +2324,14 @@ components:
           type: string
           maxLength: 50
           default: ""
+        fieldOrder:
+          type: array
+          description: 求职意向展示顺序，编辑器与预览共用；省略时按默认顺序
+          maxItems: 4
+          uniqueItems: true
+          items:
+            type: string
+            enum: [role, city, salary, arrival]
 
     ResumeSection:
       type: object

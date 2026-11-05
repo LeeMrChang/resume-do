@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
+  BasicFieldKey,
+  IntentFieldKey,
   ResumeAppearance,
   ResumeDocument,
   ResumeRecordItem,
   ResumeSection,
 } from '@resume-do/schema';
 import {
+  basicFieldOrder,
   createDefaultAppearance,
   createDefaultDocument,
   createSampleDocument,
   emptyRecordItem,
   emptyRichItem,
   ensureCanonicalSections,
+  intentFieldOrder,
   isBlankDocument,
   stripTags,
   ageFromBirthMonth,
@@ -52,8 +56,65 @@ function sectionFieldLabels(sectionId: string): { title: string; role: string } 
   return { title: '机构或公司名称', role: '职位或角色' };
 }
 
+const BASIC_FIELD_LABELS: Record<BasicFieldKey, string> = {
+  gender: '性别',
+  city: '所在城市',
+  experienceYears: '工作年限',
+  phone: '联系电话',
+  email: '联系邮箱',
+  birthMonth: '出生年月',
+  age: '年龄',
+  nativePlace: '籍贯',
+  ethnicity: '民族',
+  maritalStatus: '婚姻状况',
+  politicalStatus: '政治面貌',
+  height: '身高',
+  weight: '体重',
+};
+
+const INTENT_FIELD_LABELS: Record<IntentFieldKey, string> = {
+  role: '意向职位',
+  city: '意向城市',
+  salary: '期望薪资',
+  arrival: '到岗时间',
+};
+
 function textLength(html: string): number {
   return stripTags(html).length;
+}
+
+function FieldMoves({ label, canUp, canDown, onMove }: {
+  label: string;
+  canUp: boolean;
+  canDown: boolean;
+  onMove: (direction: -1 | 1) => void;
+}) {
+  const arrow = (direction: -1 | 1) => (
+    <button
+      type="button"
+      className="field-move"
+      aria-label={`${label}${direction < 0 ? '上移' : '下移'}`}
+      title={direction < 0 ? '上移' : '下移'}
+      disabled={direction < 0 ? !canUp : !canDown}
+      onMouseDown={event => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onMove(direction);
+      }}
+    >
+      <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true">
+        <path
+          d={direction < 0 ? 'm4 12 6-6 6 6' : 'm4 8 6 6 6-6'}
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+  return <span className="field-moves">{arrow(-1)}{arrow(1)}</span>;
 }
 
 function Field({
@@ -64,6 +125,7 @@ function Field({
   type = 'text',
   placeholder,
   readOnly,
+  actions,
 }: {
   label: string;
   value: string;
@@ -72,8 +134,9 @@ function Field({
   type?: string;
   placeholder?: string;
   readOnly?: boolean;
+  actions?: ReactNode;
 }) {
-  return (
+  const control = (
     <label>
       {label}
       <input
@@ -85,6 +148,13 @@ function Field({
         onChange={(event) => onChange?.(event.target.value)}
       />
     </label>
+  );
+  if (!actions) return control;
+  return (
+    <div className="field-cell">
+      {control}
+      {actions}
+    </div>
   );
 }
 
@@ -424,6 +494,28 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
     if (from < 0 || to < 0 || to >= current.sections.length) return;
     updateDocument((draft) => {
       [draft.sections[from], draft.sections[to]] = [draft.sections[to], draft.sections[from]];
+    });
+  }
+
+  function moveBasicField(key: BasicFieldKey, direction: -1 | 1) {
+    updateDocument((draft) => {
+      const keys = basicFieldOrder(draft.basic);
+      const from = keys.indexOf(key);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= keys.length) return;
+      [keys[from], keys[to]] = [keys[to], keys[from]];
+      draft.basic.fieldOrder = keys;
+    });
+  }
+
+  function moveIntentField(key: IntentFieldKey, direction: -1 | 1) {
+    updateDocument((draft) => {
+      const keys = intentFieldOrder(draft.intent);
+      const from = keys.indexOf(key);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= keys.length) return;
+      [keys[from], keys[to]] = [keys[to], keys[from]];
+      draft.intent.fieldOrder = keys;
     });
   }
 
@@ -1260,75 +1352,45 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
                       })
                     }
                   />
-                  <Field
-                    label="性别"
-                    value={doc.basic.gender}
-                    maxLength={10}
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.basic.gender = value;
-                      })
+                  {basicFieldOrder(doc.basic).map((key, index, keys) => {
+                    const label = BASIC_FIELD_LABELS[key];
+                    const actions = (
+                      <FieldMoves
+                        label={label}
+                        canUp={index > 0}
+                        canDown={index < keys.length - 1}
+                        onMove={direction => moveBasicField(key, direction)}
+                      />
+                    );
+                    if (key === 'birthMonth') {
+                      return (
+                        <Field key={key} label={label} type="month" value={doc.basic.birthMonth ?? ''} actions={actions}
+                          onChange={value => updateDocument(draft => { draft.basic.birthMonth = value; })} />
+                      );
                     }
-                  />
-                  <Field
-                    label="所在城市"
-                    value={doc.basic.city}
-                    maxLength={50}
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.basic.city = value;
-                      })
+                    if (key === 'age') {
+                      return doc.basic.birthMonth ? (
+                        <Field key={key} label="年龄（自动计算）" value={ageFromBirthMonth(doc.basic.birthMonth)}
+                          placeholder="由出生年月自动计算" readOnly actions={actions} />
+                      ) : (
+                        <Field key={key} label={label} value={doc.basic.age ?? ''} maxLength={30}
+                          placeholder="选填，留空则简历不展示" actions={actions}
+                          onChange={value => updateDocument(draft => { draft.basic.age = value; })} />
+                      );
                     }
-                  />
-                  <Field
-                    label="工作年限"
-                    value={doc.basic.experienceYears}
-                    maxLength={30}
-                    placeholder="例如：5 年经验"
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.basic.experienceYears = value;
-                      })
-                    }
-                  />
-                  <Field
-                    label="联系电话"
-                    value={doc.basic.phone}
-                    maxLength={30}
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.basic.phone = value;
-                      })
-                    }
-                  />
-                  <Field
-                    label="联系邮箱"
-                    type="email"
-                    value={doc.basic.email}
-                    maxLength={120}
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.basic.email = value;
-                      })
-                    }
-                  />
-                  <Field label="出生年月" type="month" value={doc.basic.birthMonth ?? ''} onChange={value => updateDocument(draft => { draft.basic.birthMonth = value; })} />
-                  {doc.basic.birthMonth ? (
-                    <Field label="年龄（自动计算）" value={ageFromBirthMonth(doc.basic.birthMonth)} placeholder="由出生年月自动计算" readOnly />
-                  ) : (
-                    <Field
-                      label="年龄"
-                      value={doc.basic.age ?? ''}
-                      maxLength={30}
-                      placeholder="选填，留空则简历不展示"
-                      onChange={(value) =>
-                        updateDocument((draft) => {
-                          draft.basic.age = value;
-                        })
-                      }
-                    />
-                  )}
-                  {([['nativePlace','籍贯'],['ethnicity','民族'],['maritalStatus','婚姻状况'],['politicalStatus','政治面貌'],['height','身高'],['weight','体重']] as const).map(([key,label]) => <Field key={key} label={label} value={doc.basic[key] ?? ''} maxLength={50} onChange={value => updateDocument(draft => { draft.basic[key] = value; })} />)}
+                    return (
+                      <Field
+                        key={key}
+                        label={label}
+                        type={key === 'email' ? 'email' : 'text'}
+                        value={doc.basic[key] ?? ''}
+                        maxLength={key === 'gender' ? 10 : key === 'email' ? 120 : key === 'experienceYears' ? 30 : 50}
+                        placeholder={key === 'experienceYears' ? '例如：5 年经验' : undefined}
+                        actions={actions}
+                        onChange={value => updateDocument(draft => { draft.basic[key] = value; })}
+                      />
+                    );
+                  })}
                   <div className="wide">
                     {(doc.basic.customFields ?? []).map((pair,index) => <div className="field-grid" key={index}>
                       <Field label="自定义名称" value={pair.label} maxLength={30} onChange={value => updateDocument(draft => { draft.basic.customFields![index].label = value; })} />
@@ -1345,48 +1407,24 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
 
               {selected === 'intent' && (
                 <div className="field-grid">
-                  <Field
-                    label="意向职位"
-                    value={doc.intent.role}
-                    maxLength={100}
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.intent.role = value;
-                      })
-                    }
-                  />
-                  <Field
-                    label="意向城市"
-                    value={doc.intent.city}
-                    maxLength={50}
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.intent.city = value;
-                      })
-                    }
-                  />
-                  <Field
-                    label="期望薪资"
-                    value={doc.intent.salary}
-                    maxLength={50}
-                    placeholder="例如：面议"
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.intent.salary = value;
-                      })
-                    }
-                  />
-                  <Field
-                    label="到岗时间"
-                    value={doc.intent.arrival}
-                    maxLength={50}
-                    placeholder="例如：一个月内到岗"
-                    onChange={(value) =>
-                      updateDocument((draft) => {
-                        draft.intent.arrival = value;
-                      })
-                    }
-                  />
+                  {intentFieldOrder(doc.intent).map((key, index, keys) => (
+                    <Field
+                      key={key}
+                      label={INTENT_FIELD_LABELS[key]}
+                      value={doc.intent[key]}
+                      maxLength={key === 'role' ? 100 : 50}
+                      placeholder={key === 'salary' ? '例如：面议' : key === 'arrival' ? '例如：一个月内到岗' : undefined}
+                      actions={(
+                        <FieldMoves
+                          label={INTENT_FIELD_LABELS[key]}
+                          canUp={index > 0}
+                          canDown={index < keys.length - 1}
+                          onMove={direction => moveIntentField(key, direction)}
+                        />
+                      )}
+                      onChange={value => updateDocument(draft => { draft.intent[key] = value; })}
+                    />
+                  ))}
                 </div>
               )}
 

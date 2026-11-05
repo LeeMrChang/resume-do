@@ -47,6 +47,44 @@ test('contact icons use vector paths, omit empty fields and keep text free of fo
   assert.ok(!/[\uE000-\uF8FF\uFFFD]/u.test(header.html));
 });
 
+test('saved field order drives the modern contact line, extras and intent line', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.basic.gender = '女';
+  document.basic.city = '深圳';
+  document.basic.phone = '13800000000';
+  document.basic.email = 'linxiao@example.com';
+  document.basic.nativePlace = '广东揭阳';
+  document.basic.height = '170cm';
+  document.basic.weight = '55kg';
+  document.basic.fieldOrder = ['email', 'phone', 'height', 'gender'];
+  document.intent.fieldOrder = ['arrival', 'role'];
+  const header = buildBlocks({ document, appearance: SAMPLE_APPEARANCE })[0];
+
+  const iconOrder = [...header.html.matchAll(/data-icon="([^"]+)"/g)].map(match => match[1]);
+  assert.ok(iconOrder.indexOf('email') < iconOrder.indexOf('phone'));
+  assert.ok(iconOrder.indexOf('phone') < iconOrder.indexOf('gender'));
+  assert.ok(iconOrder.indexOf('email') < iconOrder.indexOf('gender'));
+  assert.ok(iconOrder.indexOf('height') < iconOrder.indexOf('weight'), 'unlisted fields keep their relative order');
+  assert.match(header.html, /一个月内到岗 · Java 开发工程师/);
+});
+
+test('classic header follows a saved field order and keeps its default grid otherwise', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.basic.birthMonth = '1990-01';
+  document.basic.nativePlace = '广东揭阳';
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
+
+  const plain = buildBlocks({ document, appearance })[0].html.replace(/\u3000/g, '');
+  assert.ok(plain.indexOf('年龄') < plain.indexOf('性别'));
+  assert.ok(plain.indexOf('性别') < plain.indexOf('籍贯'));
+
+  document.basic.fieldOrder = ['phone', 'email'];
+  const ordered = buildBlocks({ document, appearance })[0].html.replace(/\u3000/g, '');
+  assert.ok(ordered.indexOf('电话') < ordered.indexOf('邮箱'));
+  assert.ok(ordered.indexOf('邮箱') < ordered.indexOf('年龄'));
+  assert.match(ordered, /求职意向：Java 开发工程师｜深圳｜面议｜一个月内到岗/);
+});
+
 test('sanitizes scripts, event handlers and unsafe links', () => {
   const clean = sanitizeRichText(
     '<p onclick="alert(1)">Hello<script>alert(1)</script><a href="javascript:alert(1)">x</a></p>',

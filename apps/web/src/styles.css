@@ -881,6 +881,65 @@ input[readonly] {
   margin: 2px 0 0;
 }
 
+.field-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.field-cell > label {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-moves {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.field-cell:hover > .field-moves,
+.field-cell:focus-within > .field-moves {
+  visibility: visible;
+}
+
+.field-move {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-subtle);
+}
+
+.field-move:hover:not(:disabled) {
+  background: var(--success-subtle);
+  color: var(--brand-hover);
+}
+
+.field-move:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.field-move:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  .field-moves {
+    visibility: visible;
+  }
+}
+
 .field-grid > label > .checkbox-line,
 .field-grid > label > .date-range {
   margin-top: 0;
