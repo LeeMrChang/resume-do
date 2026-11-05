@@ -1,6 +1,20 @@
-# AI 润色与精炼接口（后端交接，2026-10-30）
+# AI 润色与精炼（浏览器直连 BYOK，2026-11-05 更新）
 
-## 1. 范围与状态
+## 0. 当前模式：用户自带 Key，浏览器直连
+
+2026-11-05 起，Web 端不再调用 `POST /api/ai/rewrite`：
+
+- 用户在「AI 设置」弹窗中填写自己的 DeepSeek API Key，并可选择保存在 `localStorage`（默认，换标签页仍可用）或 `sessionStorage`（仅本次会话，关闭浏览器即失效）。
+- 模型白名单：`deepseek-flash`（默认）与 `deepseek-v4-pro`；旧名 `deepseek-chat`、`deepseek-reasoner` 已于 2026-07-24 停用，不再提供。
+- 请求由浏览器直接发往 `https://api.deepseek.com/chat/completions`，`Authorization: Bearer <用户 Key>`；Resume Do 服务器不接收、不保存、不代理 Key，也不参与计费。费用计入用户自己的 DeepSeek 账户。
+- 未配置或未启用时，编辑器只显示「开启 AI 改写」；点击后打开设置弹窗，保存成功后自动继续刚才的操作。
+- 提示词从 `apps/api/src/main/resources/prompts/ai-rewrite-*.txt` 镜像到 `apps/web/src/aiPrompts.ts`，单元测试逐字节比较，避免两端规则漂移。
+- 结果校验与 warnings 在浏览器内完成，规则与服务端 `AiRewriteService` 一致（空白、超长、HTML、控制字符、新增数字、精炼未缩短）。
+- 设置弹窗提供「测试连接」，调用无计费的 `GET https://api.deepseek.com/models` 校验 Key。
+
+服务端接口与 `RESUME_DO_AI_*` 配置仍然存在，但 Web 不再使用，属于休眠的旧链路；确认没有其他客户端后可从服务器 `.env` 移除（见第 5 节）。
+
+## 1. 历史范围与状态（服务端模式）
 
 后端接口与编辑器按钮均已接入：正文编辑区下方提供「AI 润色」「精炼内容」，接口本身不写简历、不接入导入解析或 PDF worker。
 
@@ -81,20 +95,38 @@
 
 日额度按**预约次数**计算，包含供应商失败、超时及无效结果，不等于成功次数或精确账单；默认每账号 20 次/UTC 日、5 次/滚动分钟。调用供应商前即使进程崩溃也不返还额度，避免失败重试无限付费。
 
-## 4. Qcode 前端接入约定
+## 4. 前端实现（浏览器直连）
 
-1. 首次使用必须明确告知：所选正文及可选岗位会发送给 DeepSeek；用户同意后才发送 `privacyConsent: true`。不能预选同意或继续使用“不向任何第三方发送”的绝对文案。
-2. 只传选中文字或当前正文，避免发送姓名、手机号、邮箱、照片、完整 document 或 PDF；后端不会读取用户简历补充上下文。后端不宣称对任意正文自动脱敏。
-3. 富文本需转为保留段落/列表换行的纯文本；本期输出不保留粗体、颜色等样式。用文本节点展示，勿将模型输出直接作为 HTML。
-4. `fetch('/api/ai/rewrite', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request)})`。
-5. 发起前记住简历 ID、模块/条目 ID、选区和输入快照。展示原文与建议、warnings，提供采用/取消/重新生成。
-6. 等待期间用户可继续编辑；采用前比较当前内容与发起快照，变化时重新确认，不覆盖后来输入。取消或切换简历后忽略旧响应。
-7. 只有采用才进入现有编辑器更新/撤销/自动保存流程。此接口自身没有任何简历写入。
-8. 前端取消 fetch 不保证供应商停止生成或免计费。不要因 30 秒前端超时自动换 ID 重发，前端超时应略大于后端超时（例如 40 秒）。
+| 组件/模块 | 职责 |
+| --- | --- |
+| `apps/web/src/AiSettingsDialog.tsx` | 启用开关、Key 输入（可显示/隐藏）、模型选择、仅本次会话、测试连接 |
+| `apps/web/src/aiSettings.ts` | 读写 `resume-do.ai`（localStorage）与 `resume-do.ai.session`（sessionStorage）、Key 格式校验与脱敏、模型白名单 |
+| `apps/web/src/deepseek.ts` | 直连 Chat Completions、错误码映射、结果校验、warnings、`GET /models` 校验 |
+| `apps/web/src/aiPrompts.ts` | 与服务端提示词逐字节一致的共同规则、润色、精炼指令 |
+| `apps/web/src/AiRewritePanel.tsx` | 按钮门禁、同意弹层、加载/错误、对比、采用/覆盖确认 |
+| `apps/web/src/aiRewrite.ts` | 富文本转纯文本、纯文本转安全段落、6000 字上限常量 |
 
-当前实现（`apps/web`）：`RichEditor.tsx` 挂载 `AiRewritePanel.tsx`，`aiRewrite.ts` 负责富文本与纯文本互转；只取当前条目/模块正文，意向职位为空时省略。编辑器按简历、模块、条目重新挂载，切换时中止旧请求并忽略迟到响应。`AI_REQUEST_PENDING`、`AI_TIMEOUT` 与网络失败复用原 ID 重试，其余错误换新 ID；前端超时 40 秒。采用时先比较当前正文与发送快照，变化则要求再次确认，确认后写入编辑器并走现有自动保存。
+约定：
+
+1. 未启用或 Key 格式无效时绝不发请求，改为打开设置弹窗；保存成功后继续被拦截的操作。
+2. 每次实际发送前仍弹出同意弹层，文案明确「使用我的 API Key、浏览器直连 DeepSeek、不经过 Resume Do 服务器、费用计入我的账户」，默认不勾选。
+3. 只发送当前模块正文与可选意向职位，不发送姓名、电话、邮箱、照片、完整简历或 PDF；不承诺自动脱敏。
+4. 富文本先转为保留段落/列表换行的纯文本；模型输出经 `sanitizeRichText` 包装并转义，仅作文本展示，绝不直接作为 HTML。
+5. 请求体固定为 `{model, stream:false, max_tokens:8192, thinking:{type:'disabled'}, response_format:{type:'json_object'}, messages:[system,user]}`；`user` 消息是 `{text,section,targetRole}` 的 JSON 字符串。
+6. 请求超时 40 秒；超时不自动重发，错误提示会说明「DeepSeek 可能仍在生成并计费」。
+7. 错误码：`AI_KEY_INVALID`（401/403，提供「重新填写 Key」）、`AI_KEY_BALANCE`（402）、`AI_KEY_RATE_LIMITED`（429）、`AI_REQUEST_REJECTED`（400）、`AI_UNAVAILABLE`（其他 HTTP）、`AI_INVALID_RESULT`（结构或内容校验失败）、`AI_NETWORK`、`AI_TIMEOUT`。
+8. 采用前比较当前正文与发送快照，变化时要求二次确认；取消、切换简历或模块会中止请求并忽略迟到响应。
+9. 设置弹窗的 Key 使用 `type=password`，默认遮挡；仅保存在本机浏览器存储，不上传服务器。
+
+### 旧服务端模式（仅供兼容排查）
+
+历史前端通过 `POST /api/ai/rewrite`、`privacyConsent: true` 与 24 小时 requestId 去重调用服务端密钥。该调用已从 `apps/web/src/api.ts` 移除；如仍有第三方客户端使用，接口契约见第 2、3 节。
 
 ## 5. 配置与启动
+
+> **BYOK 之后的服务端配置**：Web 已不再调用 `/api/ai/rewrite`。先发布包含直连改动的前端，确认线上不再出现该接口请求后，可以从 API 服务器的 `.env` 删除 `RESUME_DO_AI_ENABLED`、`RESUME_DO_AI_API_KEY`、`RESUME_DO_AI_MODEL`。删除后 `AiProperties` 回落到默认值（关闭、空密钥、`deepseek-flash`），旧接口只会返回 `AI_DISABLED`/`AI_NOT_CONFIGURED`，不会调用模型。`RESUME_DO_AI_*` 仍是后端代码的配置项，`.env.example` 保留示例；只有决定彻底删除旧链路时才需要移除 Java 代码、提示词、V4 表和对应测试。
+
+下表是旧服务端模式的配置，BYOK 模式不需要任何一项：
 
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -161,13 +193,17 @@ curl -i -b cookies.txt -H 'Content-Type: application/json' \
 
 | 文件 | 职责 |
 | --- | --- |
-| `apps/web/src/AiRewritePanel.tsx` | 按钮、同意弹层、加载/错误、原文与建议对比、采用/覆盖确认、同 ID 重试 |
+| `apps/web/src/AiSettingsDialog.tsx` | AI 设置：启用、Key、模型、仅本次会话、测试连接、存储失败提示 |
+| `apps/web/src/aiSettings.ts` | 本机存储、Key 校验/脱敏、模型白名单 |
+| `apps/web/src/deepseek.ts` | 浏览器直连 DeepSeek、错误映射、结果校验与 warnings |
+| `apps/web/src/aiPrompts.ts` | 镜像服务端提示词 |
+| `apps/web/src/AiRewritePanel.tsx` | 按钮门禁、同意弹层、加载/错误、原文与建议对比、采用/覆盖确认 |
 | `apps/web/src/aiRewrite.ts` | 富文本转纯文本、纯文本转安全段落、6000 字上限常量 |
 | `apps/web/src/RichEditor.tsx` | 挂载面板，采用时替换正文并触发 `onChange` |
-| `apps/web/src/api.ts` | AI 请求/响应类型与 `aiRewrite` 调用 |
-| `apps/web/src/styles.css` | `.rich-ai`、`.ai-panel`、`.ai-compare` 等样式 |
+| `apps/web/src/styles.css` | `.rich-ai`、`.ai-panel`、`.ai-compare`、`.ai-settings` 等样式 |
 | `apps/web/tests/aiRewrite.test.ts` | 纯文本转换与 HTML 转义单元测试 |
-| `apps/web/tests/aiRewrite.e2e.ts` | Playwright + 模拟 API：同意、payload、compare、采用与自动保存、覆盖确认 |
+| `apps/web/tests/aiDirect.test.ts` | 提示词一致性、设置/Key 校验、直连请求体、错误映射、结果校验 |
+| `apps/web/tests/aiRewrite.e2e.ts` | Playwright + 浏览器网络层模拟：无 Key 门禁、设置保存、同意、直连 payload、采用与自动保存、覆盖确认、401 处理 |
 | `apps/api/src/main/java/com/resumedo/ai/AiController.java` | HTTP 契约与账号识别 |
 | 同目录 `AiDtos.java` / `AiErrors.java` | 参数、响应、受控异常 |
 | 同目录 `AiRewriteService.java` | 提示词、结果校验、警告、去重编排 |
@@ -179,14 +215,17 @@ curl -i -b cookies.txt -H 'Content-Type: application/json' \
 | `apps/api/src/main/resources/application.yml` / `.env.example` | 默认关闭和环境变量示例 |
 | `apps/api/src/test/java/com/resumedo/ai/` | 4 个隔离测试类；HTTP 客户端、改写、预约和 MVC 契约 |
 
-验证记录（2026-10-30）：
+验证记录（2026-11-05，BYOK 直连）：
 
-- 前端单元：`apps/web` 下 `node --import tsx --test tests/aiRewrite.test.ts`，2 项通过。
-- 前端端到端：`node --import tsx --test tests/aiRewrite.e2e.ts`，1 项通过；静态 `dist` + 模拟 API，覆盖同意默认未勾选、发送按钮禁用、纯文本预览、polish/condense 请求字段、建议与 warnings 展示、采用后自动保存、生成期间编辑触发覆盖确认。
-- 后端：`apps/api` 下 JDK 21 / Maven 3.9.9 执行 `mvn -o test`，131 项通过，0 失败／错误／跳过，含 AI 的 4 个测试类。
-- 仓库根 `npm run typecheck`、`npm run build -w @resume-do/web` 退出码 0。
+- `npm run typecheck -w @resume-do/web` 退出码 0（含 `tests/tsconfig.json`）。
+- `npm test -w @resume-do/web`：28 项通过；其中 `tests/aiDirect.test.ts` 7 项，覆盖提示词与服务端文件逐字节一致、Key 格式/脱敏、直连请求体与 Authorization、错误码映射、结果校验、`/models` 测试。
+- `node --import tsx --test tests/aiRewrite.e2e.ts`：1 项通过；在浏览器网络层模拟 DeepSeek（含 CORS 预检、`/models`、401），覆盖无 Key 门禁、设置写入 localStorage、同意默认未勾选、直连 payload、采用后自动保存、生成期间编辑覆盖确认、无效 Key 重新填写；同时断言全程未请求 `/api/ai/*`。
+- `npm run build -w @resume-do/web` 退出码 0。
+- 用无效 Key 对真实 `api.deepseek.com` 发起一次「测试连接」，返回 401 并正确映射为 `AI_KEY_INVALID`，确认浏览器直连的 CORS 与错误处理可用；未产生模型调用或费用。
 
-未验证：真实 API Key、真实 DeepSeek 调用与效果、费用与额度、真实 MySQL 并发与 Flyway V4、真实账号下的端到端。前端全部验证均使用模拟响应，不代表 AI 输出质量。
+历史记录（2026-10-30，服务端模式）：前端单元 2 项、端到端 1 项、后端 131 项通过。
+
+未验证：真实有效 Key 下的输出质量、费用与额度、不同网络环境（代理/企业防火墙）下的可用性、真实账号下的完整端到端。所有自动化验证使用模拟响应，不代表 AI 输出质量。
 
 后续 Qcode 可运行（`apps/api`，JDK 21 / Maven 3.9.x）：
 

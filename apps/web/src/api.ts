@@ -68,25 +68,6 @@ export interface SaveResumeRequest {
   appearance: ResumeAppearance;
 }
 
-export type AiRewriteAction = 'polish' | 'condense';
-
-export interface AiRewriteRequest {
-  requestId: string;
-  action: AiRewriteAction;
-  text: string;
-  section?: string;
-  targetRole?: string;
-  privacyConsent: true;
-}
-
-export interface AiRewriteResponse {
-  requestId: string;
-  action: AiRewriteAction;
-  originalText: string;
-  rewrittenText: string;
-  warnings: string[];
-}
-
 export type ExportStatus = 'queued' | 'rendering' | 'ready' | 'expired' | 'failed';
 
 export interface ExportJob {
@@ -208,9 +189,6 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  aiRewrite: (payload: AiRewriteRequest, signal?: AbortSignal) =>
-    request<AiRewriteResponse>('/api/ai/rewrite', { ...json(payload), signal }),
-
   createExport: (
     resumeId: string,
     payload: { revision: number; idempotencyKey: string; filename?: string },

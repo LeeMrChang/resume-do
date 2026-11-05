@@ -1156,6 +1156,87 @@ input[readonly] {
   margin: 0;
 }
 
+.ai-settings .note {
+  margin: 4px 0 8px;
+}
+
+.ai-settings-reason {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--warning-subtle);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.dialog .ai-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.ai-settings-field {
+  margin-top: 14px;
+}
+
+.ai-settings-field > span {
+  display: block;
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin-bottom: 6px;
+}
+
+.ai-settings-field .note {
+  margin: 6px 0 0;
+}
+
+.ai-key-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-key-row input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.ai-key-row button {
+  flex: 0 0 auto;
+}
+
+.ai-settings select {
+  margin-top: 6px;
+}
+
+.ai-settings-test {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.ai-settings-test.ok {
+  color: var(--success-fg);
+}
+
+.ai-settings-test.error {
+  color: var(--danger);
+}
+
+.rich-ai-actions button.ai-settings-link {
+  padding: 5px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.rich-ai-actions button.ai-settings-link:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--brand);
+}
+
 @media (max-width: 1000px) {
   .ai-compare {
     grid-template-columns: 1fr;
