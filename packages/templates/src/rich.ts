@@ -3,13 +3,39 @@ import type { AnyNode, Element } from 'domhandler';
 import sanitizeHtml from 'sanitize-html';
 import type { ResumeBlock } from './types';
 
-const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'a'];
+const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'a', 'span', 'img'];
+const FONT_SIZE = /^(?:12|13|14|15|16|18|20|22|24)px$/;
+const TEXT_ALIGN = /^(?:left|center|right|justify)$/;
+const COLOR = /^#[0-9a-f]{6}$/i;
+const INLINE_IMAGE = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+const DIMENSION = /^\d{1,4}$/;
+const FONT_WEIGHT = /^(?:bold|normal|[1-9]00)$/;
+const FONT_STYLE = /^(?:italic|normal)$/;
+const TEXT_DECORATION = /^(?:underline|none)$/;
 
 export function sanitizeRichText(html: string): string {
   return sanitizeHtml(html, {
     allowedTags: ALLOWED_TAGS,
-    allowedAttributes: { a: ['href', 'rel'] },
+    allowedAttributes: {
+      a: ['href', 'rel'],
+      span: ['style'],
+      p: ['style'],
+      li: ['style'],
+      img: ['src', 'alt', 'width', 'height'],
+    },
+    allowedStyles: {
+      span: {
+        'font-size': [FONT_SIZE],
+        color: [COLOR],
+        'font-weight': [FONT_WEIGHT],
+        'font-style': [FONT_STYLE],
+        'text-decoration': [TEXT_DECORATION],
+      },
+      p: { 'text-align': [TEXT_ALIGN] },
+      li: { 'text-align': [TEXT_ALIGN] },
+    },
     allowedSchemes: ['http', 'https', 'mailto'],
+    allowedSchemesByTag: { img: ['data'] },
     disallowedTagsMode: 'discard',
     transformTags: {
       div: 'p',
@@ -20,7 +46,17 @@ export function sanitizeRichText(html: string): string {
           rel: 'noopener noreferrer',
         },
       }),
+      img: (tagName, attribs) => ({
+        tagName,
+        attribs: {
+          src: attribs.src ?? '',
+          alt: (attribs.alt ?? '').slice(0, 100),
+          ...(DIMENSION.test(attribs.width ?? '') ? { width: attribs.width } : {}),
+          ...(DIMENSION.test(attribs.height ?? '') ? { height: attribs.height } : {}),
+        },
+      }),
     },
+    exclusiveFilter: (frame) => frame.tag === 'img' && !INLINE_IMAGE.test(frame.attribs.src ?? ''),
   });
 }
 
@@ -56,6 +92,16 @@ function isElement(node: AnyNode): node is Element {
   return node.type === 'tag';
 }
 
+function hasRenderable(inner: string): boolean {
+  return Boolean(textOfHtml(inner)) || /<img\b/i.test(inner);
+}
+
+function alignmentOf(node: Element): string {
+  const style = node.attribs?.style ?? '';
+  const match = /(?:^|;)\s*text-align\s*:\s*(left|center|right|justify)\s*(?:;|$)/i.exec(style);
+  return match ? match[1].toLowerCase() : '';
+}
+
 export function richBlocks(html: string, prefix: string): ResumeBlock[] {
   const clean = sanitizeRichText(html);
   if (!clean.trim()) return [];
@@ -74,16 +120,22 @@ export function richBlocks(html: string, prefix: string): ResumeBlock[] {
     );
   };
 
-  const pushParagraph = (inner: string) => {
-    if (!textOfHtml(inner)) return;
+  const pushParagraph = (inner: string, align = '') => {
+    if (!hasRenderable(inner)) return;
+    const style = align ? ` style="text-align: ${align}"` : '';
     blocks.push(
-      makeBlock(`${prefix}-p${index++}`, 'paragraph', `<p class="r-paragraph">${inner}</p>`),
+      makeBlock(`${prefix}-p${index++}`, 'paragraph', `<p class="r-paragraph"${style}>${inner}</p>`),
     );
   };
 
   // Imported documents keep list markers as text; render them as hanging bullets.
   const BULLET_PREFIX = /^(?:([·•▪◦●○])\s*|([-*])\s+|(\d{1,2})[.、)）]\s*)/;
   const pushElement = (node: Element) => {
+    if (node.name === 'img') {
+      pushParagraph(DomUtils.getOuterHTML(node));
+      return;
+    }
+    const align = alignmentOf(node);
     const leading = node.children.find(child => child.type === 'text');
     if (leading && leading.type === 'text') {
       const match = leading.data.match(BULLET_PREFIX);
@@ -91,13 +143,13 @@ export function richBlocks(html: string, prefix: string): ResumeBlock[] {
         // PDF text layers often expose the bullet as a middle dot; render the filled bullet the original shows.
         const mark = match[3] ? `${match[3]}.` : match[1] ? '•' : match[2];
         leading.data = leading.data.slice(match[0].length);
-        if (textOfHtml(DomUtils.getInnerHTML(node))) {
+        if (hasRenderable(DomUtils.getInnerHTML(node))) {
           pushBullet(DomUtils.getInnerHTML(node), mark);
           return;
         }
       }
     }
-    pushParagraph(DomUtils.getInnerHTML(node));
+    pushParagraph(DomUtils.getInnerHTML(node), align);
   };
 
   const pushList = (node: Element, ordered: boolean) => {
@@ -105,7 +157,7 @@ export function richBlocks(html: string, prefix: string): ResumeBlock[] {
     for (const child of node.children) {
       if (!isElement(child) || child.name !== 'li') continue;
       const inner = DomUtils.getInnerHTML(child);
-      if (!textOfHtml(inner)) continue;
+      if (!hasRenderable(inner)) continue;
       itemIndex += 1;
       const mark = ordered ? `${itemIndex}.` : '•';
       blocks.push(

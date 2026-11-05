@@ -95,8 +95,47 @@ test('sanitizes scripts, event handlers and unsafe links', () => {
   assert.ok(clean.includes('Hello'));
 });
 
-test('turns lists into bullet blocks', () => {
-  const blocks = richBlocks('<ul><li>one</li><li>two</li></ul>', 'x');
+const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+
+test('keeps whitelisted font size, color and alignment styles', () => {
+  const clean = sanitizeRichText(
+    '<p style="text-align: center"><span style="font-size: 18px; color: #1f6feb">标题</span></p>' +
+      '<p style="text-align: right"><span style="font-size: 99px; color: red">红色</span></p>',
+  );
+  assert.match(clean, /text-align:\s*center/);
+  assert.match(clean, /font-size:\s*18px/);
+  assert.match(clean, /color:\s*#1f6feb/);
+  assert.match(clean, /text-align:\s*right/);
+  assert.doesNotMatch(clean, /99px/);
+  assert.doesNotMatch(clean, /color: red/);
+});
+
+test('keeps inline image data and drops external or malformed sources', () => {
+  const clean = sanitizeRichText(
+    `<p><img src="${PNG}" width="320" height="180" alt="示意图"></p>` +
+      '<p><img src="https://example.com/a.png" width="320" height="180"></p>' +
+      '<p><img src="data:image/svg+xml;base64,PHN2Zz4=" onerror="alert(1)"></p>',
+  );
+  assert.match(clean, /<img[^>]*src="data:image\/png;base64,/);
+  assert.match(clean, /width="320"/);
+  assert.match(clean, /height="180"/);
+  assert.doesNotMatch(clean, /example\.com/);
+  assert.doesNotMatch(clean, /svg\+xml/);
+  assert.doesNotMatch(clean, /onerror/);
+});
+
+test('renders alignment and image-only paragraphs in the resume body', () => {
+  const blocks = richBlocks(
+    `<p style="text-align: center">居中段落</p><p><img src="${PNG}" width="320" height="180"></p>`,
+    'x',
+  );
+  assert.equal(blocks.length, 2);
+  assert.match(blocks[0].html, /class="r-paragraph" style="text-align: center"/);
+  assert.equal(blocks[0].plainText, '居中段落');
+  assert.match(blocks[1].html, /<img[^>]*width="320"/);
+});
+
+test('turns lists into bullet blocks', () => {  const blocks = richBlocks('<ul><li>one</li><li>two</li></ul>', 'x');
   assert.equal(blocks.length, 2);
   assert.equal(blocks[0].kind, 'bullet');
   assert.ok(blocks[0].html.includes('r-mark'));

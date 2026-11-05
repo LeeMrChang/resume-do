@@ -241,6 +241,14 @@ export const RESUME_CSS = `
 .r-bullet .r-mark { position: absolute; left: 0; color: var(--r-accent); }
 .r-paragraph a,
 .r-bullet a { color: inherit; text-decoration: underline; }
+.r-paragraph img,
+.r-bullet img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 4px 0;
+  border-radius: 3px;
+}
 .r-block[data-section='honor'] .r-bullet,
 .r-block[data-section='hobby'] .r-bullet {
   padding: 3px 8px 3px 20px;

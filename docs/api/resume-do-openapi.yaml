@@ -89,7 +89,7 @@ info:
     | 编辑版 PDF 下载有效期 | 生成完成后默认 10 分钟（`RESUME_DO_DOWNLOAD_TTL_MINUTES`） | 410 `FILE_EXPIRED` |
     | 可编辑导入 PDF | ≤ 100 页，提取文字 ≤ 100000 字 | 400 `RESOURCE_LIMIT` / `TEXT_LIMIT` |
     | DOCX 安全限制 | ≤ 512 个压缩包条目；单条目 ≤ 10 MiB；解压总量 ≤ 50 MiB；禁止宏、ActiveX、嵌入对象、DTD/外部实体 | 400 `UNSAFE_ARCHIVE` / `UNSAFE_XML` |
-    | 简历正文 | 单个模块正文 ≤ 20000 字符；全简历纯文本 ≤ 100000 字符；模块 ≤ 30 个，单模块条目 ≤ 30 条 | 400 `BAD_REQUEST` |
+    | 简历正文 | 单条正文 HTML ≤ 4,000,000 字符（含内嵌图片）；全简历纯文本 ≤ 100000 字符；模块 ≤ 30 个，单模块条目 ≤ 30 条 | 400 `BAD_REQUEST` |
     | AI | 每账号 20 次/UTC 日、5 次/滚动分钟；单次正文 ≤ 6000 字符 | 429 `AI_*` |
 
     ## 5. 端点总览
@@ -2400,12 +2400,17 @@ components:
           description: 至今；为 false 时开始年月不能晚于结束年月
         body:
           type: string
-          maxLength: 20000
+          maxLength: 4000000
           default: ""
           description: |
             正文 HTML。服务端使用白名单清洗：
-            允许 `p` `br` `strong` `b` `em` `i` `u` `ul` `ol` `li` `a`，
-            `a` 仅保留 `href` / `rel` 且协议限 http/https/mailto；其余标签与属性会被移除。
+            允许 `p` `br` `strong` `b` `em` `i` `u` `ul` `ol` `li` `a` `span` `img`；
+            `a` 仅保留 `href` / `rel` 且协议限 http/https/mailto；
+            `span` 仅保留 `font-size`（12/13/14/15/16/18/20/22/24px）、`color`（#RRGGBB）、
+            `font-weight`、`font-style`、`text-decoration`；
+            `p` / `li` 仅保留 `text-align`（left/center/right/justify）；
+            `img` 仅接受 `data:image/(png|jpeg|webp);base64` 内嵌图片，`width` / `height` 为 1–4 位数字；
+            其余标签与属性会被移除。
 
     ResumeAppearance:
       type: object

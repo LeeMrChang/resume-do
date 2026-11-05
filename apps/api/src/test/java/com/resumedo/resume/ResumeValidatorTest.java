@@ -258,6 +258,38 @@ class ResumeValidatorTest {
     }
 
     @Test
+    void keepsWhitelistedFontStylesAndDropsUnknownValues() {
+        String dirty = "<p style=\"text-align: center\"><span style=\"font-size: 18px; color: #1f6feb\">标题</span></p>"
+                + "<p style=\"text-align: right\"><span style=\"font-size: 99px; color: red\">红色</span></p>";
+        JsonNode document = documentWithSections(section("summary", "rich", item("s1", null, null, dirty)));
+
+        String clean = validator.validate(document, validAppearance()).document()
+                .path("sections").get(0).path("items").get(0).path("body").asText();
+
+        assertThat(clean).contains("text-align:center");
+        assertThat(clean).contains("font-size:18px");
+        assertThat(clean).contains("color:#1f6feb");
+        assertThat(clean).doesNotContain("99px");
+        assertThat(clean).doesNotContain("color:red");
+    }
+
+    @Test
+    void keepsInlineImagesAndDropsExternalSources() {
+        String png = "data:image/png;base64,iVBORw0KGgo=";
+        String dirty = "<p><img src=\"" + png + "\" width=\"320\" height=\"180\" alt=\"示意图\"></p>"
+                + "<p><img src=\"https://example.com/a.png\"></p>";
+        JsonNode document = documentWithSections(section("summary", "rich", item("s1", null, null, dirty)));
+
+        String clean = validator.validate(document, validAppearance()).document()
+                .path("sections").get(0).path("items").get(0).path("body").asText();
+
+        assertThat(clean).contains(png);
+        assertThat(clean).contains("width=\"320\"");
+        assertThat(clean).contains("height=\"180\"");
+        assertThat(clean).doesNotContain("example.com");
+    }
+
+    @Test
     void doesNotMutateCallerDocument() {
         String dirty = "<script>alert(1)</script><p>ok</p>";
         ObjectNode document = documentWithSections(section("summary", "rich", item("s1", null, null, dirty)));

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const SCHEMA_VERSION = 1;
-export const MAX_SECTION_BODY = 20_000;
+export const MAX_SECTION_BODY = 4_000_000;
 export const MAX_TOTAL_BODY = 100_000;
 
 export const FONT_IDS = ['sans', 'serif', 'arial', 'noto-sans', 'noto-serif', 'lxgw-wenkai'] as const;

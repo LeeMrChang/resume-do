@@ -50,14 +50,33 @@ public class ResumeValidator {
             "2150", "2151", "2152", "2153", "2154", "2155", "2156", "2157", "2158", "2159",
             "2160", "2161", "2162", "2163", "2164", "2165", "2166", "2167", "2168", "2169");
     private static final Pattern PHOTO = Pattern.compile("^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$");
+    private static final Pattern FONT_SIZE = Pattern.compile("^(?:12|13|14|15|16|18|20|22|24)px$");
+    private static final Pattern TEXT_ALIGN = Pattern.compile("^(?:left|center|right|justify)$");
+    private static final Pattern FONT_WEIGHT = Pattern.compile("^(?:bold|normal|[1-9]00)$");
+    private static final Pattern FONT_STYLE = Pattern.compile("^(?:italic|normal)$");
+    private static final Pattern TEXT_DECORATION = Pattern.compile("^(?:underline|none)$");
+    private static final Pattern DIMENSION = Pattern.compile("^\\d{1,4}$");
+    private static final java.util.Map<String, Pattern> SPAN_STYLES = java.util.Map.of(
+            "font-size", FONT_SIZE,
+            "color", COLOR,
+            "font-weight", FONT_WEIGHT,
+            "font-style", FONT_STYLE,
+            "text-decoration", TEXT_DECORATION);
+    private static final java.util.Map<String, Pattern> BLOCK_STYLES = java.util.Map.of(
+            "text-align", TEXT_ALIGN);
     private static final Set<String> BASIC_FIELD_KEYS = Set.of(
             "gender", "city", "experienceYears", "phone", "email", "birthMonth", "age",
             "nativePlace", "ethnicity", "maritalStatus", "politicalStatus", "height", "weight");
     private static final Set<String> INTENT_FIELD_KEYS = Set.of("role", "city", "salary", "arrival");
     private static final Safelist SAFELIST = Safelist.none()
-            .addTags("p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li", "a")
+            .addTags("p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li", "a", "span", "img")
             .addAttributes("a", "href", "rel")
-            .addProtocols("a", "href", "http", "https", "mailto");
+            .addProtocols("a", "href", "http", "https", "mailto")
+            .addAttributes("span", "style")
+            .addAttributes("p", "style")
+            .addAttributes("li", "style")
+            .addAttributes("img", "src", "alt", "width", "height")
+            .addProtocols("img", "src", "data");
 
     public record Validated(JsonNode document, JsonNode appearance, int schemaVersion, String templateId) {
     }
@@ -169,7 +188,7 @@ public class ResumeValidator {
                 if (!ongoing && !start.isEmpty() && !end.isEmpty() && start.compareTo(end) > 0) {
                     throw ApiException.badRequest("开始年月不能晚于结束年月");
                 }
-                String body = text(item, "body", 20_000, "正文");
+                String body = text(item, "body", 4_000_000, "正文");
                 String clean = sanitizeBody(body);
                 item.put("body", clean);
                 total += Jsoup.parse(clean).text().length();
@@ -211,8 +230,61 @@ public class ResumeValidator {
         var fragment = Jsoup.parseBodyFragment(body);
         fragment.select("div").tagName("p");
         fragment.outputSettings().prettyPrint(false);
+        for (org.jsoup.nodes.Element span : fragment.body().select("span")) {
+            cleanStyle(span, SPAN_STYLES);
+        }
+        for (org.jsoup.nodes.Element block : fragment.body().select("p, li")) {
+            cleanStyle(block, BLOCK_STYLES);
+        }
+        // Validate inline images before cleaning; Jsoup keeps data: sources once
+        // the protocol is whitelisted for img.
+        for (org.jsoup.nodes.Element img : fragment.body().select("img")) {
+            if (!PHOTO.matcher(img.attr("src")).matches()) {
+                img.remove();
+                continue;
+            }
+            if (!DIMENSION.matcher(img.attr("width")).matches()) {
+                img.removeAttr("width");
+            }
+            if (!DIMENSION.matcher(img.attr("height")).matches()) {
+                img.removeAttr("height");
+            }
+            String alt = img.attr("alt");
+            if (alt.length() > 100) {
+                img.attr("alt", alt.substring(0, 100));
+            }
+        }
         return Jsoup.clean(fragment.body().html(), "", SAFELIST,
                 new org.jsoup.nodes.Document.OutputSettings().prettyPrint(false));
+    }
+
+    private static void cleanStyle(org.jsoup.nodes.Element element, java.util.Map<String, Pattern> allowed) {
+        String style = element.attr("style");
+        if (style.isEmpty()) {
+            return;
+        }
+        StringBuilder kept = new StringBuilder();
+        for (String declaration : style.split(";")) {
+            int colon = declaration.indexOf(':');
+            if (colon < 0) {
+                continue;
+            }
+            String property = declaration.substring(0, colon).trim().toLowerCase(java.util.Locale.ROOT);
+            String value = declaration.substring(colon + 1).trim();
+            Pattern pattern = allowed.get(property);
+            if (pattern == null || !pattern.matcher(value).matches()) {
+                continue;
+            }
+            if (kept.length() > 0) {
+                kept.append(';');
+            }
+            kept.append(property).append(':').append(value);
+        }
+        if (kept.length() == 0) {
+            element.removeAttr("style");
+        } else {
+            element.attr("style", kept.toString());
+        }
     }
 
     private static ObjectNode requireObject(ObjectNode parent, String field, String label) {
