@@ -32,6 +32,7 @@ class ReleasePlanTests(unittest.TestCase):
             'package-lock.json': set(planner.SERVICES),
             'deploy/compose.cloud.yaml': set(planner.SERVICES),
             'README.md': set(),
+            'AGENTS.md': set(),
         }.items():
             self.assertEqual(planner.affected(path), services, path)
 

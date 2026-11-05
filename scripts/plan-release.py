@@ -29,7 +29,7 @@ def affected(path):
         return {'worker'}
     if path in ('deploy/web.Dockerfile', 'deploy/nginx.conf', 'scripts/copy-pdf-assets.mjs'):
         return {'web'}
-    if path.startswith(('docs/', '.idea/', '.qoder/', '.run/')) or path in ('README.md', '.gitignore'):
+    if path.startswith(('docs/', '.idea/', '.qoder/', '.run/')) or path in ('README.md', 'AGENTS.md', '.gitignore'):
         return set()
     # Lockfiles, workspace manifests, deployment/test helpers and unknown inputs are shared.
     return set(SERVICES)
