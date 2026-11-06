@@ -202,8 +202,8 @@ public class ResumeValidator {
                 appearance, "templateId", "1045", "模板", TEMPLATE_IDS);
         enumText(appearance, "fontId", "sans", "字体",
                 Set.of("sans", "serif", "arial", "noto-sans", "noto-serif", "lxgw-wenkai"));
-        intInRange(appearance, "fontSize", 12, 16, 14, "字号");
-        numberInRange(appearance, "lineHeight", 1.2, 2.2, 1.5, "行高");
+        intInRange(appearance, "fontSize", 12, 20, 14, "字号");
+        numberInRange(appearance, "lineHeight", 1.05, 2.2, 1.5, "行高");
         intInRange(appearance, "sectionGap", 5, 50, 18, "模块间距");
         intInRange(appearance, "recordGap", 0, 16, 4, "条目间距");
         intInRange(appearance, "pageMargin", 24, 60, 42, "页面边距");

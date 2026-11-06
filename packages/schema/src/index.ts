@@ -394,6 +394,54 @@ export const resumeDocumentSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
     importWarning: z.string().max(500).optional(),
+    /** Header clues recovered from the source file so the imported skin can mirror it. */
+    importStyle: z
+      .object({
+        headerAlign: z.enum(['left', 'center']).optional(),
+        metaStyle: z.enum(['inline', 'labelled']).optional(),
+        dateStyle: z.enum(['iso', 'dot']).optional(),
+        recordHead: z.enum(['date-first', 'date-last']).optional(),
+        nameColor: z.string().regex(colorPattern).optional(),
+        intentColor: z.string().regex(colorPattern).optional(),
+        metaColor: z.string().regex(colorPattern).optional(),
+        sectionTitleColor: z.string().regex(colorPattern).optional(),
+        /** Divider printed under the section title, when the source has one. */
+        titleRule: z.string().regex(colorPattern).optional(),
+        headerRule: z.string().regex(colorPattern).optional(),
+        leftRule: z.string().regex(colorPattern).optional(),
+        /** Whether the source prints its vertical rule dashed or solid. */
+        leftRuleStyle: z.enum(['solid', 'dashed']).optional(),
+        pageBackground: z.string().regex(colorPattern).optional(),
+        /** Name size in points, as printed in the source file. */
+        nameSize: z.number().min(12).max(48).optional(),
+        /** Intent line size in points, as printed in the source file. */
+        intentSize: z.number().min(5).max(24).optional(),
+        /** Header meta size in points, as printed in the source file. */
+        metaSize: z.number().min(5).max(24).optional(),
+        /** Section title size relative to body text, as printed in the source file. */
+        titleSize: z.number().min(1).max(2).optional(),
+        /** Extra space the source leaves between list entries, in CSS pixels. */
+        bulletGap: z.number().int().min(0).max(24).optional(),
+        /** Where the source prints a list mark, measured from the content margin in CSS pixels. */
+        bulletMark: z.number().int().min(0).max(80).optional(),
+        /** Where the source starts list text, measured from the content margin in CSS pixels. */
+        bulletIndent: z.number().int().min(0).max(80).optional(),
+        /** How far the source indents record heads from the content margin, in CSS pixels. */
+        recordIndent: z.number().int().min(0).max(48).optional(),
+        /** How far the source indents record paragraphs from the content margin, in CSS pixels. */
+        bodyIndent: z.number().int().min(0).max(64).optional(),
+        /** First-line indent for sources that only push a paragraph's first line in, in CSS pixels. */
+        bodyTextIndent: z.number().int().min(0).max(64).optional(),
+        /** Blank space the source leaves between two stacked paragraphs, in CSS pixels. */
+        paragraphGap: z.number().int().min(0).max(36).optional(),
+        /** Exact body size in CSS pixels when the source page has to be scaled onto A4. */
+        fontSizePx: z.number().min(9).max(26).optional(),
+        /** Same indent for the header, when the source aligns its rule with the entry column. */
+        headerIndent: z.number().int().min(0).max(48).optional(),
+        /** Colour of the small square the source prints beside each entry head, when it has one. */
+        recordMark: z.string().regex(colorPattern).optional(),
+      })
+      .optional(),
     /** Set once default modules have been merged, so deleted modules stay deleted. */
     moduleDefaultsApplied: z.boolean().optional(),
     basic: basicSchema,
@@ -424,8 +472,8 @@ export const resumeDocumentSchema = z
 export const appearanceSchema = z.object({
   templateId: z.enum(ALL_TEMPLATE_IDS).default('1045'),
   fontId: z.enum(FONT_IDS).default('sans'),
-  fontSize: z.number().int().min(12).max(16).default(14),
-  lineHeight: z.number().min(1.2).max(2.2).default(1.5),
+  fontSize: z.number().int().min(12).max(20).default(14),
+  lineHeight: z.number().min(1.05).max(2.2).default(1.5),
   sectionGap: z.number().int().min(5).max(50).default(18),
   recordGap: z.number().int().min(0).max(16).default(4),
   pageMargin: z.number().int().min(24).max(60).default(42),

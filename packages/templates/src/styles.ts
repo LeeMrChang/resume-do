@@ -416,19 +416,26 @@ export const RESUME_CSS = `
   font-weight: 700;
 }
 .tpl-imported .r-content > .r-block.r-section:first-child { padding-top: 0; }
+.tpl-imported .r-intro-center { flex-direction: column; align-items: center; text-align: center; }
+.tpl-imported .r-intro-center .r-intro-main { flex: none; width: 100%; }
+.tpl-imported .r-intro-center .r-meta { justify-content: center; }
+.tpl-imported .r-meta-inline { display: block; }
+/* The source prints 求职意向 on its own line above the two-column detail grid. */
+.tpl-imported .r-meta-grid .r-intent-row { grid-column: 1 / -1; }
 
 .tpl-imported .r-record {
   align-items: baseline;
   padding-top: 9px;
 }
 .tpl-imported .r-record-inline {
-  display: grid;
-  grid-template-columns: 34% minmax(0, 1fr) auto;
+  display: flex;
+  align-items: baseline;
   gap: 12px;
   line-height: 1.45;
   font-weight: 700;
 }
 .tpl-imported .r-record-inline .r-record-date {
+  margin-left: auto;
   color: #333;
   font-weight: 700;
   white-space: nowrap;
@@ -437,7 +444,6 @@ export const RESUME_CSS = `
   min-width: 0;
 }
 .tpl-imported .r-record-inline .r-record-role {
-  text-align: right;
   white-space: nowrap;
 }
 .tpl-imported .r-paragraph,
@@ -446,16 +452,113 @@ export const RESUME_CSS = `
   padding-bottom: 0;
   text-align: justify;
 }
-.tpl-imported .r-paragraph {
-  padding-left: 0;
+/* The rich text may already carry r-paragraph on its <p>, so indent only the block wrapper. */
+.tpl-imported .r-block.r-paragraph {
+  padding-left: var(--r-import-body-indent, 0);
+  text-indent: var(--r-import-body-text-indent, 0);
 }
-.tpl-imported .r-bullet {
-  padding-left: 18px;
+/* The source opens a new paragraph on a wider pitch than its own line pitch.
+   Padding, not margin: the paginator measures block heights and would miss a margin. */
+.tpl-imported .r-block.r-paragraph + .r-block.r-paragraph {
+  padding-top: var(--r-import-paragraph-gap, 0);
 }
-.tpl-imported .r-bullet .r-mark {
-  left: 6px;
+/* The bullet list also keeps the gap the source leaves after the paragraph introducing it. */
+.tpl-imported .r-block.r-paragraph + .r-block.r-bullet {
+  padding-top: var(--r-import-bullet-gap, 0);
+}
+/* Sources leave about half a line between a heading and the first body line. */
+.tpl-imported .r-block.r-section + .r-block.r-paragraph,
+.tpl-imported .r-block.r-section + .r-block.r-bullet,
+.tpl-imported .r-block.r-record-head + .r-block.r-paragraph,
+.tpl-imported .r-block.r-record-head + .r-block.r-bullet {
+  padding-top: 8px;
+}
+/* Entries keep the source's own indent instead of being stretched to the page margin. */
+.tpl-imported .r-block.r-record-head,
+.tpl-imported .r-block.r-role {
+  padding-left: var(--r-import-record-indent, 0);
+}
+.tpl-imported .r-block.r-record-head { position: relative; }
+/* Sources that print a small square beside each entry get it back in the same gutter. */
+.tpl-imported .r-block.r-record-head::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 1em;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--r-import-record-mark, transparent);
+}
+/* renderBlockHtml already carries the bullet class, so only the inner list row may add indentation. */
+.tpl-imported .r-block.r-bullet {
+  padding: 0;
+}
+.tpl-imported .r-block > .r-bullet {
+  padding-left: var(--r-import-bullet-indent, 18px);
+  padding-bottom: var(--r-import-bullet-gap, 0);
+}
+.tpl-imported .r-block > .r-bullet .r-mark {
+  left: var(--r-import-bullet-mark, 6px);
   color: #333;
 }
+
+/* 原样还原：页底背景、抬头横线、左侧虚线、标题底色都取自原件 */
+.r-page.tpl-imported::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--r-margin) + 6px);
+  top: var(--r-margin);
+  bottom: var(--r-margin);
+  border-left: var(--r-import-left-rule, 0);
+  pointer-events: none;
+}
+.tpl-imported .r-intro {
+  border-bottom: var(--r-import-header-rule, 0);
+  border-radius: 0;
+  padding-bottom: 6px;
+  margin-left: var(--r-import-header-indent, 0);
+}
+.tpl-imported .r-intro h1 {
+  color: var(--r-import-name, var(--r-accent));
+  font-size: var(--r-import-name-size, 1.75em);
+  letter-spacing: 0.02em;
+}
+.tpl-imported .r-intro .r-intent {
+  color: var(--r-import-intent, #333);
+  font-size: var(--r-import-intent-size, 0.98em);
+}
+.tpl-imported .r-intro .r-meta { font-size: var(--r-import-meta-size, 0.88em); }
+.tpl-imported .r-intro .r-meta,
+.tpl-imported .r-meta { color: var(--r-import-meta, #5f6b75); }
+.tpl-imported .r-contact-icon { display: none; }
+.tpl-imported .r-section-title {
+  position: relative;
+  padding: 3px 0;
+  border-left: 0;
+  border-radius: 0;
+  background: none;
+  border-bottom: var(--r-import-title-rule, 0);
+  color: var(--r-import-title, var(--r-accent));
+  font-size: var(--r-import-title-size, 1.15em);
+}
+.tpl-imported.title-tint .r-content .r-section-title,
+.tpl-imported.title-tint.r-measure .r-section-title {
+  margin-left: 0;
+  padding: 3px 0;
+  border-radius: 0;
+  background: var(--r-title-tint);
+  color: var(--r-import-title, var(--r-ink));
+}
+.tpl-imported .r-record-date-first {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: 12px;
+}
+.tpl-imported .r-record-date-first .r-record-date { margin-left: 0; justify-self: start; }
+.tpl-imported .r-record-date-first .r-record-title { justify-self: center; }
+.tpl-imported .r-record-date-first .r-record-role { justify-self: end; }
 
 /* A 经典单栏 / E 衬线极简：居中且不描边的抬头 */
 .hdr-centered-plain .r-intro {

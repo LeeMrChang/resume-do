@@ -39,7 +39,9 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
    if(url.pathname==='/api/imports/direct/original-test') {
     assert.equal(method,'POST'); imports++;
     const document=createDefaultDocument(); document.basic.name='覆盖测试';
+    document.importStyle={fontSizePx:14.52};
     record={...record,revision:(record.revision as number)+1,document,
+      appearance:{...createDefaultAppearance(),templateId:'imported',fontSize:15},
       source:{filename:'第二版.pdf',mime:'application/pdf',bytes:fixture.length,pages:3},updatedAt:new Date().toISOString()};
     return route.fulfill({json:record});
    }
@@ -76,6 +78,28 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   });
   assert.equal(imports,1);
 
+  const waitForSize=async (size:string)=>{
+   await page.waitForFunction(expected=>{
+    const sheet=document.querySelector('.pages .r-page');
+    return sheet && getComputedStyle(sheet).fontSize===expected;
+   },size);
+  };
+  await waitForSize('14.52px');
+  await page.getByRole('button',{name:'字体 / 语言',exact:true}).click();
+  await page.getByRole('slider',{name:/正文字号/}).fill('18');
+  await waitForSize('18px');
+  await page.getByRole('button',{name:'取消',exact:true}).click();
+  await waitForSize('14.52px');
+  assert.equal(patches,0);
+  await page.getByRole('button',{name:'字体 / 语言',exact:true}).click();
+  await page.getByRole('slider',{name:/正文字号/}).fill('18');
+  await page.getByRole('button',{name:'应用',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'已保存'}).waitFor();
+  await page.reload();
+  await page.locator('.resume-card .card-open').first().click();
+  await waitForSize('18px');
+  assert.equal(patches,1);
+
   const fab=page.getByRole('button',{name:'↓ 下载 / 导出简历',exact:true});
   assert.equal(await fab.evaluate(el=>getComputedStyle(el).position),'static','Download button follows the preview instead of sticking');
   const fabBox=await fab.boundingBox();
@@ -93,7 +117,7 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   await page.getByText('已清空当前简历内容',{exact:true}).waitFor();
   assert.equal(await page.getByLabel('姓名',{exact:true}).inputValue(),'');
   assert.equal(await page.getByLabel('简历名称').inputValue(),'我的简历');
-  assert.equal(patches,1);
+  assert.equal(patches,2);
 
   await page.reload();
   await page.locator('.resume-card .card-open').first().click();

@@ -167,9 +167,9 @@ class ResumeValidatorTest {
     @Test
     void rejectsFontSizeOutOfRange() {
         ObjectNode appearance = (ObjectNode) validAppearance();
-        appearance.put("fontSize", 20);
+        appearance.put("fontSize", 21);
 
-        assertBadRequest(() -> validator.validate(validDocument(), appearance), "字号应在 12 到 16 之间");
+        assertBadRequest(() -> validator.validate(validDocument(), appearance), "字号应在 12 到 20 之间");
     }
 
     @Test

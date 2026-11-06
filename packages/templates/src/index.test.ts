@@ -6,7 +6,7 @@ import { getTemplateLayout, splitBlocks } from './layout';
 import { paginateBlocks } from './pagination';
 import { TEMPLATE_CATALOG, getTemplateSpec } from './catalog';
 import { TEMPLATE_IDS, ALL_TEMPLATE_IDS, FONT_IDS } from '@resume-do/schema';
-import { getPageMetrics, renderPagesFragment } from './render';
+import { getPageMetrics, renderMeasureFragment, renderPagesFragment } from './render';
 import { RESUME_CSS } from './styles';
 import { sanitizeRichText, richBlocks } from './rich';
 import type { ResumeBlock } from './types';
@@ -71,6 +71,7 @@ test('saved field order drives the modern contact line, extras and intent line',
 test('classic header follows a saved field order and keeps its default grid otherwise', () => {
   const document = structuredClone(SAMPLE_DOCUMENT);
   document.basic.birthMonth = '1990-01';
+  document.basic.age = '35';
   document.basic.nativePlace = '广东揭阳';
   const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
 
@@ -80,9 +81,212 @@ test('classic header follows a saved field order and keeps its default grid othe
 
   document.basic.fieldOrder = ['phone', 'email'];
   const ordered = buildBlocks({ document, appearance })[0].html.replace(/\u3000/g, '');
+  assert.ok(ordered.indexOf('求职意向') < ordered.indexOf('电话'));
   assert.ok(ordered.indexOf('电话') < ordered.indexOf('邮箱'));
   assert.ok(ordered.indexOf('邮箱') < ordered.indexOf('年龄'));
-  assert.match(ordered, /求职意向：Java 开发工程师｜深圳｜面议｜一个月内到岗/);
+  assert.match(ordered, /<em>求职意向<\/em><span>Java 开发工程师｜深圳｜面议｜一个月内到岗<\/span>/);
+  // The source prints the intent on its own row, above the two-column detail grid.
+  assert.match(ordered, /class="r-contact r-intent-row"/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-meta-grid \.r-intent-row \{[^}]*grid-column: 1 \/ -1/);
+});
+
+test('imported template follows a centred, label-free source header', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.basic.name = '李昌浩';
+  document.basic.gender = '男';
+  document.basic.city = '';
+  document.basic.experienceYears = '7年经验';
+  document.basic.phone = '13695138043';
+  document.basic.email = '840591418@qq.com';
+  document.basic.showPhoto = false;
+  document.intent = {
+    role: '资深Java工程师/技术负责人',
+    city: '深圳',
+    salary: '面议',
+    arrival: '随时到岗',
+    fieldOrder: ['city', 'salary', 'arrival', 'role'],
+  };
+  document.importStyle = { headerAlign: 'center', metaStyle: 'inline' };
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
+
+  const header = buildBlocks({ document, appearance })[0];
+  assert.ok(header.html.includes('r-intro-center'));
+  assert.ok(!header.html.includes('r-intro-photo'));
+  assert.ok(!header.html.includes('r-meta-grid'));
+  assert.ok(!header.html.includes('<em>'));
+  assert.ok(!header.html.includes('data-icon'));
+  assert.ok(header.html.includes('深圳 · 面议 · 随时到岗 · 资深Java工程师/技术负责人'));
+  assert.ok(!header.html.includes('求职意向'));
+  assert.ok(header.html.includes('男 · 7年经验 · 13695138043 · 840591418@qq.com'));
+});
+
+test('imported labelled headers keep their cells and print no invented icons or avatar', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.basic.phone = '13695138043';
+  document.basic.birthMonth = '1993-04';
+  document.importStyle = { headerAlign: 'left', metaStyle: 'labelled' };
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
+
+  const header = buildBlocks({ document, appearance })[0];
+  assert.ok(header.html.includes('r-meta-grid'));
+  assert.match(header.html, /<em>电\u3000\u3000话<\/em>/);
+  assert.ok(!header.html.includes('data-icon'));
+  assert.ok(!header.html.includes('r-intro-photo'));
+  assert.ok(!header.html.includes('r-intro-center'));
+  assert.ok(header.html.includes('出生年月'), 'a printed field stays');
+  assert.ok(!header.html.includes('年龄'), 'the skin must not invent a derived field');
+});
+
+test('imported dates follow the separator printed in the source', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
+
+  const iso = buildBlocks({ document, appearance }).map(item => item.plainText).join('|');
+  assert.match(iso, /2016-09 ~ 2020-06/);
+
+  document.importStyle = { dateStyle: 'dot' };
+  const dotted = buildBlocks({ document, appearance }).map(item => item.plainText).join('|');
+  assert.match(dotted, /2016\.09 — 2020\.06/);
+});
+
+test('imported record heads can lead with the date column', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
+
+  const tail = buildBlocks({ document, appearance }).find(item => item.kind === 'record-head');
+  assert.ok(tail);
+  assert.ok(tail.html.indexOf('r-record-title') < tail.html.indexOf('r-record-date'));
+
+  document.importStyle = { recordHead: 'date-first' };
+  const first = buildBlocks({ document, appearance }).find(item => item.kind === 'record-head');
+  assert.ok(first);
+  assert.ok(first.html.includes('r-record-date-first'));
+  assert.ok(first.html.indexOf('r-record-date') < first.html.indexOf('r-record-title'));
+});
+
+test('a body-only record keeps its body and gets no invented heading', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.sections = [{
+    id: 'notes',
+    type: 'records',
+    title: '项目经历',
+    visible: true,
+    items: [{
+      id: 'notes-1',
+      title: '',
+      role: '',
+      startMonth: '',
+      endMonth: '',
+      ongoing: false,
+      body: '<p>负责核心链路的稳定性建设。</p>',
+    }],
+  }];
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
+
+  const blocks = buildBlocks({ document, appearance });
+  assert.ok(!blocks.some(item => item.kind === 'record-head'));
+  assert.ok(!blocks.some(item => item.plainText.includes('未命名经历')));
+  assert.ok(blocks.some(item => item.plainText === '负责核心链路的稳定性建设。'));
+});
+
+test('imported page style mirrors the source colours, name size and rules', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.importStyle = {
+    nameColor: '#1b2733',
+    intentColor: '#2e4a7a',
+    metaColor: '#5f6b75',
+    sectionTitleColor: '#1b2733',
+    headerRule: '#2e4a7a',
+    leftRule: '#d4dae4',
+    leftRuleStyle: 'solid' as const,
+    pageBackground: '#f3f5f9',
+    nameSize: 29,
+    intentSize: 10.5,
+    metaSize: 9.3,
+    titleSize: 1.14,
+    bulletGap: 10,
+    bulletMark: 24,
+    bulletIndent: 62,
+    recordIndent: 24,
+    bodyIndent: 48,
+    bodyTextIndent: 26,
+    paragraphGap: 27,
+    headerIndent: 24,
+    recordMark: '#2e4a7a',
+  };
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
+  const input = { document, appearance };
+
+  const html = renderPagesFragment(input, [buildBlocks(input)]);
+  assert.match(html, /--r-page-bg:#f3f5f9/);
+  assert.match(html, /--r-import-name:#1b2733/);
+  assert.match(html, /--r-import-intent:#2e4a7a/);
+  assert.match(html, /--r-import-meta:#5f6b75/);
+  assert.match(html, /--r-import-title:#1b2733/);
+  assert.match(html, /--r-import-header-rule:2px solid #2e4a7a/);
+  assert.match(html, /--r-import-left-rule:1px solid #d4dae4/);
+  assert.match(html, /--r-import-name-size:29pt/);
+  assert.match(html, /--r-import-intent-size:10\.5pt/);
+  assert.match(html, /--r-import-meta-size:9\.3pt/);
+  assert.match(html, /--r-import-title-size:1.14em/);
+  assert.match(html, /--r-import-bullet-gap:10px/);
+  assert.match(html, /--r-import-bullet-mark:24px/);
+  assert.match(html, /--r-import-bullet-indent:62px/);
+  assert.match(html, /--r-import-record-indent:24px/);
+  assert.match(html, /--r-import-body-indent:48px/);
+  assert.match(html, /--r-import-body-text-indent:26px/);
+  assert.match(html, /--r-import-paragraph-gap:27px/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block\.r-paragraph \+ \.r-block\.r-paragraph \{[^}]*padding-top:[^}]*paragraph-gap/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block\.r-paragraph \+ \.r-block\.r-bullet \{[^}]*--r-import-bullet-gap/);
+  assert.match(RESUME_CSS, /\.r-block\.r-record-head \+ \.r-block\.r-paragraph,[^{]*\{[^}]*padding-top: 8px/);
+  assert.match(html, /--r-import-header-indent:24px/);
+  assert.match(html, /--r-import-record-mark:#2e4a7a/);
+  assert.match(RESUME_CSS, /\.r-page\.tpl-imported::before/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block\.r-bullet \{\s*padding: 0;/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block > \.r-bullet \{[^}]*--r-import-bullet-gap/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block > \.r-bullet \.r-mark \{[^}]*--r-import-bullet-mark/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block\.r-record-head,[^{]*\{[^}]*--r-import-record-indent/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block\.r-paragraph \{[^}]*--r-import-body-indent/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block\.r-paragraph \{[^}]*--r-import-body-text-indent/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-intro \{[^}]*--r-import-header-indent/);
+  assert.match(RESUME_CSS, /\.tpl-imported \.r-block\.r-record-head::before \{[^}]*--r-import-record-mark/);
+});
+
+test('measures a scaled import with the same font the page prints', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.importStyle = { fontSizePx: 14.52 };
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const, fontSize: 15 };
+  const input = { document, appearance };
+  const blocks = buildBlocks(input);
+  const { main } = splitBlocks(blocks, getTemplateLayout(appearance.templateId));
+
+  const measure = renderMeasureFragment(input, main);
+  assert.match(measure, /--r-font-size:14\.52px/);
+  assert.match(measure, /font-size:var\(--r-font-size\)/);
+  assert.doesNotMatch(measure, /font-size:15px/);
+  assert.match(measure, /line-height:var\(--r-line-height\)/);
+});
+
+test('uses an edited body size instead of the imported fractional size', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.importStyle = { fontSizePx: 14.52 };
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const, fontSize: 18 };
+  const input = { document, appearance };
+  const blocks = buildBlocks(input);
+
+  for (const html of [renderMeasureFragment(input, blocks), renderPagesFragment(input, [blocks])]) {
+    assert.match(html, /--r-font-size:18px/);
+    assert.doesNotMatch(html, /--r-font-size:14\.52px/);
+  }
+});
+
+test('keeps source precision when its body size rounds outside the editor range', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  for (const [fontSizePx, fontSize] of [[9.6, 12], [24, 20]]) {
+    document.importStyle = { fontSizePx };
+    const input = { document, appearance: { ...SAMPLE_APPEARANCE, templateId: 'imported' as const, fontSize } };
+    assert.ok(renderMeasureFragment(input, buildBlocks(input)).includes(`--r-font-size:${fontSizePx}px`));
+  }
 });
 
 test('sanitizes scripts, event handlers and unsafe links', () => {
@@ -244,6 +448,8 @@ test('imported template mirrors source layout: labelled meta grid, inline record
   assert.ok(head.html.includes('某公司'));
   assert.ok(head.html.includes('Java工程师'));
   assert.ok(head.html.includes('2024-03 ~ 2026-03'));
+  assert.ok(head.html.indexOf('某公司') < head.html.indexOf('Java工程师'));
+  assert.ok(head.html.indexOf('Java工程师') < head.html.indexOf('2024-03'));
   assert.ok(!blocks.some(item => item.kind === 'role' && item.sectionId === 'work'));
 
   const html = renderPagesFragment({ document, appearance }, [blocks]);

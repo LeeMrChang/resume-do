@@ -14,6 +14,9 @@ public class ImportMapper {
         Map.entry("工作经验", "work"), Map.entry("工作经历", "work"), Map.entry("职业经历", "work"),
         Map.entry("项目经验", "project"), Map.entry("项目经历", "project"),
         Map.entry("专业技能", "skills"), Map.entry("技能", "skills"), Map.entry("技能特长", "skills"),
+        Map.entry("专业技术", "skills"), Map.entry("专业技术能力", "skills"), Map.entry("专业能力", "skills"),
+        Map.entry("技术能力", "skills"), Map.entry("个人技能", "skills"), Map.entry("核心技能", "skills"),
+        Map.entry("技能清单", "skills"),
         Map.entry("自我评价", "evaluation"), Map.entry("个人评价", "evaluation"),
         Map.entry("报考信息", "application"), Map.entry("报考岗位", "application"), Map.entry("公考信息", "application"),
         Map.entry("实习经验", "intern"), Map.entry("实习经历", "intern"), Map.entry("实习", "intern"),
@@ -22,15 +25,42 @@ public class ImportMapper {
         Map.entry("荣誉证书", "honor"), Map.entry("荣誉奖项", "honor"), Map.entry("获奖情况", "honor"),
         Map.entry("获奖荣誉", "honor"), Map.entry("荣誉", "honor"), Map.entry("证书", "honor"),
         Map.entry("兴趣爱好", "hobby"), Map.entry("个人爱好", "hobby"), Map.entry("爱好", "hobby"),
+        Map.entry("个人概述", "summary"), Map.entry("个人简介", "summary"), Map.entry("个人优势", "summary"),
+        Map.entry("个人总结", "summary"), Map.entry("个人概况", "summary"), Map.entry("职业概述", "summary"),
+        Map.entry("个人亮点", "summary"), Map.entry("简介", "summary"),
         Map.entry("基本信息", "basic"), Map.entry("个人信息", "basic"), Map.entry("求职意向", "intent"));
     private static final List<String> SECTION_ORDER = List.of(
-        "application", "education", "work", "skills", "project", "intern", "campus", "honor", "evaluation", "hobby");
+        "application", "summary", "education", "work", "skills", "project", "intern", "campus", "honor", "evaluation", "hobby");
     private static final List<String> RECORD_SECTIONS = List.of("education", "work", "project", "intern", "campus");
-    private static final Pattern RANGE = Pattern.compile("(\\d{4})[./年-](0?[1-9]|1[0-2])月?\\s*(?:[-—–~～至]|到)+\\s*(?:(\\d{4})[./年-](0?[1-9]|1[0-2])月?|(至今|现在|今))");
+    /** Footers such as {@code 1 / 3} or {@code 第 1 页 共 3 页} are page furniture, not resume content. */
+    private static final Pattern PAGE_FOOTER = Pattern.compile(
+            "(?:\\d{1,3}\\s*[/／]\\s*\\d{1,3}|第\\s*\\d{1,3}\\s*页(?:\\s*[/／]?\\s*共\\s*\\d{1,3}\\s*页)?|Page\\s+\\d+(?:\\s*(?:/|of)\\s*\\d+)?)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern RANGE = Pattern.compile("(\\d{4})[./年-](0?[1-9]|1[0-2])(?!\\d)月?\\s*(?:[-—–~～至]|到)+\\s*(?:(\\d{4})[./年-](0?[1-9]|1[0-2])(?!\\d)月?|(至今|现在|今))");
     private static final Pattern BULLET = Pattern.compile("^(?:[·•▪◦●○]|[-*]\\s+|\\d{1,2}[.、)）]\\s*).*");
     private static final Pattern LABEL_LINE = Pattern.compile("^.{1,24}[:：]$");
+    /**
+     * A header label starts a row or follows a column gap, e.g. {@code 出生年月：} or {@code  学　　历：}.
+     * Only two-character labels may contain spacing, otherwise a Han value followed by a
+     * gap plus a label ({@code 深圳  求职意向：}) would be swallowed into one label.
+     */
+    private static final Pattern HEADER_LABEL = Pattern.compile(
+            "(?:^|(?<=[\\s\\u3000]))([\\p{IsHan}](?:[\\s\\u3000]{1,4}[\\p{IsHan}])|[\\p{IsHan}]{2,6})[:：]");
+    /** Resumes that print {@code 2023.09 — 2026.11} instead of the ISO form. */
+    private static final Pattern DOT_RANGE = Pattern.compile(
+            "\\d{4}\\.(?:0?[1-9]|1[0-2])\\s*[—–-]\\s*(?:\\d{4}\\.(?:0?[1-9]|1[0-2])|至今|现在)");
     private static final Pattern TECH_STACK = Pattern.compile("^(?:技术框架|技术栈|技术选型|技术架构)[:：]");
     private static final String LABELS = "姓名|性别|城市|所在城市|联系电话|手机|电话|邮箱|电子邮箱|工作年限|意向职位|求职岗位|意向城市|期望薪资|到岗时间|年龄|籍贯|求职意向|出生年月|出生日期|民族|婚姻状况|政治面貌|身高|体重";
+    private static final Pattern YEARS = Pattern.compile("^(\\d{1,2})\\s*年(?:以上)?(?:工作)?(?:经验|经历)$");
+    private static final Pattern AGE = Pattern.compile("^\\d{1,2}\\s*岁$");
+    private static final Pattern SALARY = Pattern.compile("^(?:面议|\\d+(?:\\.\\d+)?\\s*[kK](?:\\s*[-~至]\\s*\\d+(?:\\.\\d+)?\\s*[kK])?|\\d+(?:\\.\\d+)?\\s*万(?:\\s*[-~至]\\s*\\d+(?:\\.\\d+)?\\s*万)?(?:/年|每年)?|\\d+\\s*元(?:/月)?)$");
+    private static final Pattern ARRIVAL = Pattern.compile("^(?:随时到岗|随时入职|随时|一周内到岗|1周内到岗|两周内到岗|一个月内到岗|1个月内到岗|立即到岗|可立即到岗|在职|离职)$");
+    private static final Set<String> CITIES = Set.of(
+        "北京", "上海", "天津", "重庆", "广州", "深圳", "杭州", "南京", "苏州", "成都", "武汉", "西安",
+        "长沙", "郑州", "合肥", "济南", "青岛", "大连", "沈阳", "长春", "哈尔滨", "石家庄", "太原",
+        "呼和浩特", "南昌", "福州", "厦门", "泉州", "宁波", "温州", "无锡", "常州", "南通", "徐州",
+        "烟台", "潍坊", "东莞", "佛山", "珠海", "中山", "惠州", "江门", "汕头", "湛江", "南宁",
+        "海口", "三亚", "昆明", "贵阳", "拉萨", "兰州", "西宁", "银川", "乌鲁木齐", "香港", "澳门", "台北");
     public ImportMapper(ObjectMapper json) { this.json = json; }
 
     public ObjectNode draft(String source, String filename) {
@@ -52,6 +82,11 @@ public class ImportMapper {
         for (String id : SECTION_ORDER) grouped.put(id, new ArrayList<>());
         grouped.put("custom", new ArrayList<>());
         var titles = new HashMap<String, String>();
+        var order = new LinkedHashSet<String>();
+        var intentOrder = new ArrayList<String>();
+        boolean headerOpen = true;
+        boolean labelledHeader = false;
+        boolean unlabelledHeader = false;
         String current = "custom";
         String normalized = source.replace('\u3000', ' ');
         List<String> lines = normalized.lines().map(String::strip).filter(line -> !line.isEmpty()).toList();
@@ -65,11 +100,13 @@ public class ImportMapper {
             if (current.equals("custom") || current.equals("basic") || current.equals("intent")) {
                 line = line.replaceAll("[\\p{Co}\\uFFFD\\u2580-\\u259F\\u25A4]", "").strip();
             }
-            if (line.isEmpty()) continue;
+            if (line.isEmpty() || PAGE_FOOTER.matcher(line).matches()) continue;
             String headingText = line.replaceAll("^[一二三四五六七八九十0-9]+[、.．)）]\\s*", "").replaceAll("[:：]\\s*$", "").strip();
             String headingKey = headingText.replaceAll("[\\s:：]", "");
             if (HEADINGS.containsKey(headingKey)) {
                 current = HEADINGS.get(headingKey);
+                headerOpen = false;
+                if (!current.equals("basic") && !current.equals("intent")) order.add(current);
                 if (!current.equals("basic") && !current.equals("intent") && headingText.length() >= 3) {
                     titles.putIfAbsent(current, headingText);
                 }
@@ -77,7 +114,9 @@ public class ImportMapper {
             }
             if (current.equals("custom") || current.equals("basic") || current.equals("intent")) {
                 if (line.replaceAll("\\s+", "").equals(basic.path("name").asText())) continue;
+                String beforeFields = line;
                 line = headerFields(line, basic, intent);
+                if (!line.equals(beforeFields)) labelledHeader = true;
                 if (line.isEmpty()) continue;
                 var pair=Pattern.compile("^([^:：]{1,30})[:：]\\s*([^:：]{1,100})$").matcher(line);
                 if(pair.matches() && basic.withArray("customFields").size()<20) {
@@ -89,10 +128,22 @@ public class ImportMapper {
                 line = consumeUnlabelledContact(line, basic);
                 if (line.isEmpty()) continue;
             }
+            if (headerOpen) {
+                String beforeHeader = line;
+                line = consumeUnlabelledHeader(line, basic, intent, intentOrder);
+                if (!line.equals(beforeHeader)) unlabelledHeader = true;
+                if (line.isEmpty()) continue;
+            }
             grouped.getOrDefault(current, grouped.get("custom")).add(indented ? "\u3000" + line : line);
         }
+        if (!intentOrder.isEmpty()) {
+            var intentFields = intent.putArray("fieldOrder");
+            intentOrder.forEach(intentFields::add);
+        }
+        if (unlabelledHeader && !labelledHeader) styleNode(doc).put("metaStyle", "inline");
+        if (DOT_RANGE.matcher(source).find()) styleNode(doc).put("dateStyle", "dot");
         var pending = grouped.get("custom");
-        for (String id : SECTION_ORDER) {
+        for (String id : order) {
             var section = sections.addObject(); section.put("id", id);
             section.put("title", titles.getOrDefault(id, title(id))); section.put("visible", true);
             boolean records = RECORD_SECTIONS.contains(id);
@@ -155,25 +206,42 @@ public class ImportMapper {
     }
 
     // PDF glyph positioning often inserts spaces inside Chinese labels. Split
-    // multiple columns by labels, keeping every unsupported or invalid value.
+    // every column on its label, keeping each unsupported but well-formed pair
+    // as a header row instead of leaking it into the pending content.
     private String headerFields(String line, ObjectNode basic, ObjectNode intent) {
-        String spaced = Arrays.stream(LABELS.split("\\|"))
-                .map(label -> String.join("[\\s\\u3000]*", label.split("")))
-                .reduce((a, b) -> a + "|" + b).orElseThrow();
-        var matcher = Pattern.compile("(" + spaced + ")[\\s\\u3000]*[:：][\\s\\u3000]*").matcher(line);
+        var matcher = HEADER_LABEL.matcher(line);
         var starts = new ArrayList<Integer>();
-        while (matcher.find()) starts.add(matcher.start());
+        var ends = new ArrayList<Integer>();
+        var labels = new ArrayList<String>();
+        while (matcher.find()) {
+            starts.add(matcher.start());
+            ends.add(matcher.end());
+            labels.add(matcher.group(1).replaceAll("[\\s\\u3000]+", ""));
+        }
         if (starts.isEmpty()) return line;
         var remaining = new ArrayList<String>();
         if (starts.get(0) > 0) remaining.add(line.substring(0, starts.get(0)).strip());
         for (int i = 0; i < starts.size(); i++) {
-            String part = line.substring(starts.get(i), i + 1 < starts.size() ? starts.get(i + 1) : line.length()).strip();
-            int colon = part.indexOf('：');
-            if (colon < 0) colon = part.indexOf(':');
-            String normalized = part.substring(0, colon).replaceAll("[\\s\\u3000]+", "") + "：" + part.substring(colon + 1).strip();
-            if (!field(normalized, basic, intent)) remaining.add(normalized);
+            String value = line.substring(ends.get(i), i + 1 < starts.size() ? starts.get(i + 1) : line.length()).strip();
+            if (value.isEmpty()) continue;
+            String normalized = labels.get(i) + "：" + value;
+            if (field(normalized, basic, intent)) continue;
+            if (!addCustomField(basic, labels.get(i), value)) remaining.add(normalized);
         }
         return String.join(" ", remaining);
+    }
+
+    private boolean addCustomField(ObjectNode basic, String label, String value) {
+        var fields = basic.withArray("customFields");
+        if (label.isEmpty() || value.length() > 100 || fields.size() >= 20) return false;
+        for (var existing : fields) if (existing.path("label").asText().equals(label)) return false;
+        fields.addObject().put("label", label).put("value", value);
+        return true;
+    }
+
+    private ObjectNode styleNode(ObjectNode document) {
+        var node = document.path("importStyle");
+        return node instanceof ObjectNode existing ? existing : document.putObject("importStyle");
     }
 
     private boolean field(String line, ObjectNode basic, ObjectNode intent) {
@@ -206,7 +274,14 @@ public class ImportMapper {
             if(!birth.matches() || Integer.parseInt(birth.group(2))<1 || Integer.parseInt(birth.group(2))>12) return false;
             value=month(birth.group(1),birth.group(2));
         }
-        target.put(key, value); return true;
+        target.put(key, value);
+        if (target == basic && !key.equals("name")) {
+            var order = basic.withArray("fieldOrder");
+            boolean present = false;
+            for (var existing : order) if (existing.asText().equals(key)) present = true;
+            if (!present) order.add(key);
+        }
+        return true;
     }
     /** Pulls bare contact values out of a mixed header row so they are not repeated as unknown content. */
     private String consumeUnlabelledContact(String line, ObjectNode basic) {
@@ -221,6 +296,56 @@ public class ImportMapper {
             line = phone.replaceFirst(" ").strip();
         }
         return line.replaceAll("^[\\s|｜·•]+|[\\s|｜·•]+$", "").strip();
+    }
+
+    /** Pulls standard fields out of an unlabelled header row, e.g. {@code 深圳  面议  随时到岗  资深Java工程师}. */
+    private String consumeUnlabelledHeader(String line, ObjectNode basic, ObjectNode intent, List<String> intentOrder) {
+        if (line.isEmpty() || line.startsWith("•") || line.startsWith("·") || line.startsWith("-")) return line;
+        if (line.length() > 80 || line.matches(".*[。；;].*")) return line;
+        var tokens = line.split("\\s{2,}|\\s*[·|｜]\\s*");
+        if (tokens.length == 0) return line;
+        var remaining = new ArrayList<String>();
+        var matches = new ArrayList<String[]>();
+        for (String raw : tokens) {
+            String token = raw.strip();
+            if (token.isEmpty()) continue;
+            if (basic.path("gender").asText().isEmpty() && (token.equals("男") || token.equals("女"))) {
+                matches.add(new String[]{"basic", "gender", token}); continue;
+            }
+            if (basic.path("experienceYears").asText().isEmpty() && YEARS.matcher(token).matches()) {
+                matches.add(new String[]{"basic", "experienceYears", token}); continue;
+            }
+            if (basic.path("age").asText().isEmpty() && AGE.matcher(token).matches()) {
+                matches.add(new String[]{"basic", "age", token}); continue;
+            }
+            if (intent.path("salary").asText().isEmpty() && SALARY.matcher(token).matches()) {
+                matches.add(new String[]{"intent", "salary", token}); continue;
+            }
+            if (intent.path("arrival").asText().isEmpty() && ARRIVAL.matcher(token).matches()) {
+                matches.add(new String[]{"intent", "arrival", token}); continue;
+            }
+            if (basic.path("city").asText().isEmpty() && intent.path("city").asText().isEmpty()
+                    && (CITIES.contains(token) || token.matches("[\\p{IsHan}]{2,4}市"))) {
+                matches.add(new String[]{"city", "city", token}); continue;
+            }
+            remaining.add(token);
+        }
+        if (matches.isEmpty()) return line;
+        // A city beside salary/arrival/role is the expected city, not the current one.
+        boolean intentRow = matches.stream().anyMatch(match -> match[0].equals("intent"));
+        for (String[] match : matches) {
+            String target = match[0].equals("city") ? (intentRow ? "intent" : "basic") : match[0];
+            var node = target.equals("intent") ? intent : basic;
+            if (!node.path(match[1]).asText().isEmpty()) continue;
+            node.put(match[1], match[2]);
+            if (target.equals("intent") && !intentOrder.contains(match[1])) intentOrder.add(match[1]);
+        }
+        if (remaining.size() == 1 && intent.path("role").asText().isEmpty() && remaining.get(0).length() <= 50) {
+            intent.put("role", remaining.get(0));
+            if (!intentOrder.contains("role")) intentOrder.add("role");
+            remaining.clear();
+        }
+        return String.join("  ", remaining);
     }
 
     private void flushParagraphs(ObjectNode active, List<String> lines, List<String> pending) {
@@ -272,5 +397,5 @@ public class ImportMapper {
     }
     private String month(String year, String month) { return year + "-" + String.format("%02d", Integer.parseInt(month)); }
     private String html(String text) { return "<p>" + text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;") + "</p>"; }
-    private String title(String id) { return switch (id) { case "education" -> "教育背景"; case "work" -> "工作经验"; case "project" -> "项目经验"; case "skills" -> "专业技能"; case "application" -> "报考信息"; case "intern" -> "实习经验"; case "campus" -> "校园经历"; case "honor" -> "荣誉证书"; case "hobby" -> "兴趣爱好"; default -> "自我评价"; }; }
+    private String title(String id) { return switch (id) { case "education" -> "教育背景"; case "work" -> "工作经验"; case "project" -> "项目经验"; case "skills" -> "专业技能"; case "summary" -> "个人概述"; case "application" -> "报考信息"; case "intern" -> "实习经验"; case "campus" -> "校园经历"; case "honor" -> "荣誉证书"; case "hobby" -> "兴趣爱好"; default -> "自我评价"; }; }
 }

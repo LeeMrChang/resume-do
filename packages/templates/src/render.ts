@@ -74,6 +74,33 @@ function pageStyle(input: RenderInput): string {
     '--r-page-bg': spec.pageBg ?? '#ffffff',
     ...side,
   };
+  if (spec.id === 'imported') {
+    const style = input.document.importStyle;
+    if (style?.pageBackground) vars['--r-page-bg'] = style.pageBackground;
+    if (style?.nameColor) vars['--r-import-name'] = style.nameColor;
+    if (style?.intentColor) vars['--r-import-intent'] = style.intentColor;
+    if (style?.metaColor) vars['--r-import-meta'] = style.metaColor;
+    if (style?.sectionTitleColor) vars['--r-import-title'] = style.sectionTitleColor;
+    if (style?.titleRule) vars['--r-import-title-rule'] = `1px solid ${style.titleRule}`;
+    if (style?.headerRule) vars['--r-import-header-rule'] = `2px solid ${style.headerRule}`;
+    if (style?.leftRule) vars['--r-import-left-rule'] = `1px ${style.leftRuleStyle ?? 'dashed'} ${style.leftRule}`;
+    if (style?.nameSize) vars['--r-import-name-size'] = `${style.nameSize}pt`;
+    if (style?.intentSize) vars['--r-import-intent-size'] = `${style.intentSize}pt`;
+    if (style?.metaSize) vars['--r-import-meta-size'] = `${style.metaSize}pt`;
+    if (style?.titleSize) vars['--r-import-title-size'] = `${style.titleSize}em`;
+    if (style?.bulletGap) vars['--r-import-bullet-gap'] = `${style.bulletGap}px`;
+    if (style?.bulletMark) vars['--r-import-bullet-mark'] = `${style.bulletMark}px`;
+    if (style?.bulletIndent) vars['--r-import-bullet-indent'] = `${style.bulletIndent}px`;
+    if (style?.recordIndent) vars['--r-import-record-indent'] = `${style.recordIndent}px`;
+    if (style?.bodyIndent) vars['--r-import-body-indent'] = `${style.bodyIndent}px`;
+    if (style?.bodyTextIndent) vars['--r-import-body-text-indent'] = `${style.bodyTextIndent}px`;
+    if (style?.paragraphGap) vars['--r-import-paragraph-gap'] = `${style.paragraphGap}px`;
+    if (style?.fontSizePx && appearance.fontSize === Math.min(20, Math.max(12, Math.round(style.fontSizePx)))) {
+      vars['--r-font-size'] = `${style.fontSizePx}px`;
+    }
+    if (style?.headerIndent) vars['--r-import-header-indent'] = `${style.headerIndent}px`;
+    if (style?.recordMark) vars['--r-import-record-mark'] = style.recordMark;
+  }
   return Object.entries(vars)
     .map(([key, value]) => `${key}:${value}`)
     .join(';');
@@ -112,8 +139,10 @@ export function renderMeasureFragment(input: RenderInput, blocks: ResumeBlock[])
   const style = [
     pageStyle(input),
     `width:${metrics.contentWidthPx}px`,
-    `font-size:${input.appearance.fontSize}px`,
-    `line-height:${input.appearance.lineHeight}`,
+    // Imported pages can carry a fractional font size; measuring at the rounded
+    // value would over-wrap and break the page count.
+    'font-size:var(--r-font-size)',
+    'line-height:var(--r-line-height)',
   ].join(';');
   return `<div class="r-measure ${styleClass(input.appearance)}" style="${style}">${blocks
     .map(renderBlockHtml)
@@ -125,8 +154,8 @@ export function renderAsideMeasureFragment(input: RenderInput, blocks: ResumeBlo
   const style = [
     pageStyle(input),
     `--r-aside-content-width:${metrics.asideContentWidthPx}px`,
-    `font-size:${input.appearance.fontSize}px`,
-    `line-height:${input.appearance.lineHeight}`,
+    'font-size:var(--r-font-size)',
+    'line-height:var(--r-line-height)',
   ].join(';');
   return `<div class="r-measure-aside r-sidebar ${styleClass(input.appearance)}" style="${style}">${blocks
     .map(renderBlockHtml)

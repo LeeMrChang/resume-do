@@ -220,7 +220,7 @@ export function AppearanceDialog({
           <RangeField
             label="行间距"
             value={appearance.lineHeight}
-            min={1.2}
+            min={1.05}
             max={2.2}
             step={0.05}
             onChange={(value) => onChange({ ...appearance, lineHeight: Number(value.toFixed(2)) })}
@@ -259,7 +259,7 @@ export function AppearanceDialog({
               label="正文字号"
               value={appearance.fontSize}
               min={12}
-              max={16}
+              max={20}
               step={1}
               suffix="px"
               onChange={(value) => onChange({ ...appearance, fontSize: value })}

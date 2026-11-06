@@ -91,10 +91,11 @@ class ImportMapperTest {
         assertThat(basic.path("customFields")).isEmpty();
         assertThat(doc.path("intent").path("role").asText()).isEqualTo("Java工程师");
         var sections = doc.path("sections");
-        assertThat(sections.get(0).path("id").asText()).isEqualTo("application");
-        assertThat(sections.get(1).path("id").asText()).isEqualTo("education");
-        assertThat(sections.get(2).path("id").asText()).isEqualTo("work");
-        assertThat(sections.get(3).path("id").asText()).isEqualTo("skills");
+        assertThat(sections.get(0).path("id").asText()).isEqualTo("education");
+        assertThat(sections.get(1).path("id").asText()).isEqualTo("skills");
+        assertThat(sections.get(2).path("id").asText()).isEqualTo("project");
+        assertThat(sections.get(3).path("id").asText()).isEqualTo("evaluation");
+        assertThat(sections.get(4).path("id").asText()).isEqualTo("custom");
         assertThat(section(doc, "skills").path("title").asText()).isEqualTo("技能特长");
         var pending = section(doc, "custom");
         assertThat(pending.path("title").asText()).isEqualTo("待整理内容");
@@ -169,5 +170,107 @@ class ImportMapperTest {
         assertThat(basic.path("age").asText()).isEqualTo("31岁");
         assertThat(basic.path("nativePlace").asText()).isEqualTo("广东揭阳");
         assertThat(draft.toString()).doesNotContain("\uf073", "\u2588", "\ue001", "\ufffd", "电 话");
+    }
+
+    @Test void parsesTwoDigitNovemberAndDecemberWithoutSpillingDigitsIntoRole() {
+        var work = section(mapper.draft("工作经历\n深圳东郊未来科技有限公司    Java工程师  2023.09 — 2026.11\n负责维护", "x.pdf")
+                .path("document"), "work").path("items").get(0);
+        assertThat(work.path("startMonth").asText()).isEqualTo("2023-09");
+        assertThat(work.path("endMonth").asText()).isEqualTo("2026-11");
+        assertThat(work.path("title").asText()).isEqualTo("深圳东郊未来科技有限公司");
+        assertThat(work.path("role").asText()).isEqualTo("Java工程师");
+
+        var december = section(mapper.draft("工作经历\n甲公司    Java工程师  2023.09 — 2026.12\n负责维护", "x.pdf")
+                .path("document"), "work").path("items").get(0);
+        assertThat(december.path("endMonth").asText()).isEqualTo("2026-12");
+        assertThat(december.path("role").asText()).isEqualTo("Java工程师");
+    }
+
+    @Test void importsUnlabelledHeaderAndSummaryInSourceOrderWithoutPending() {
+        String source = "李昌浩\n"
+                + "深圳  面议  随时到岗  资深Java工程师/技术负责人\n"
+                + "男    7年经验    13695138043    840591418@qq.com\n"
+                + "个人概述\n"
+                + "•  7 年 Java 后端开发经验，涉及商户运营、医药冷链物流及制造业管理系统。\n"
+                + "专业技能\n"
+                + "•  Java 与 SQL\n"
+                + "工作经历\n"
+                + "深圳东郊未来科技有限公司    Java工程师  2023.09 — 2026.11\n"
+                + "负责维护\n"
+                + "教育背景\n"
+                + "2014-09 ~ 2018-06    广东海洋大学    电子信息工程（本科）\n"
+                + "自我评价\n"
+                + "认真负责";
+        var draft = mapper.draft(source, "lichanghao_resume.pdf");
+        var doc = draft.path("document");
+        var basic = doc.path("basic");
+        assertThat(basic.path("name").asText()).isEqualTo("李昌浩");
+        assertThat(basic.path("gender").asText()).isEqualTo("男");
+        assertThat(basic.path("experienceYears").asText()).isEqualTo("7年经验");
+        assertThat(basic.path("city").asText()).isEmpty();
+        assertThat(basic.path("phone").asText()).isEqualTo("13695138043");
+        assertThat(basic.path("email").asText()).isEqualTo("840591418@qq.com");
+        assertThat(doc.path("intent").path("city").asText()).isEqualTo("深圳");
+        assertThat(doc.path("intent").path("salary").asText()).isEqualTo("面议");
+        assertThat(doc.path("intent").path("arrival").asText()).isEqualTo("随时到岗");
+        assertThat(doc.path("intent").path("role").asText()).isEqualTo("资深Java工程师/技术负责人");
+        assertThat(doc.path("intent").path("fieldOrder").toString()).isEqualTo("[\"city\",\"salary\",\"arrival\",\"role\"]");
+        assertThat(doc.path("importStyle").path("metaStyle").asText()).isEqualTo("inline");
+        var ids = new java.util.ArrayList<String>();
+        doc.path("sections").forEach(item -> ids.add(item.path("id").asText()));
+        assertThat(ids).containsExactly("summary", "skills", "work", "education", "evaluation", "custom");
+        assertThat(section(doc, "summary").path("title").asText()).isEqualTo("个人概述");
+        assertThat(section(doc, "summary").path("items").get(0).path("body").asText()).contains("7 年 Java");
+        assertThat(section(doc, "custom").path("items")).isEmpty();
+        assertThatCode(() -> new ResumeValidator().validate(doc, draft.path("appearance"))).doesNotThrowAnyException();
+    }
+
+    @Test void splitsTwoColumnHeaderRowsOnUnknownLabelsAndKeepsProfessionalSkills() {
+        String source = "李 烨 墅\n"
+                + "出生年月： 1993-04  性　　别： 男\n"
+                + "工作年限： 8年经验  电　　话： 18023212239\n"
+                + "邮　　箱： 742968670@qq.com  学　　历： 本科\n"
+                + "现　　居： 深圳  求职意向： 资深Java工程师/技术负责人\n"
+                + "专业技术\n"
+                + "• 精通Java与数据结构\n"
+                + "自我评价\n"
+                + "结果导向\n"
+                + "工作经历\n"
+                + "2024-02 ~ 至今    深圳东郊在线科技有限公司    高级Java工程师\n"
+                + "负责平台";
+        var draft = mapper.draft(source, "李烨墅的简历.pdf");
+        var doc = draft.path("document");
+        var basic = doc.path("basic");
+        assertThat(basic.path("name").asText()).isEqualTo("李烨墅");
+        assertThat(basic.path("birthMonth").asText()).isEqualTo("1993-04");
+        assertThat(basic.path("gender").asText()).isEqualTo("男");
+        assertThat(basic.path("experienceYears").asText()).isEqualTo("8年经验");
+        assertThat(basic.path("phone").asText()).isEqualTo("18023212239");
+        assertThat(basic.path("email").asText()).isEqualTo("742968670@qq.com");
+        assertThat(basic.path("customFields").toString()).contains("\"学历\"", "\"本科\"", "\"现居\"", "\"深圳\"");
+        assertThat(doc.path("intent").path("role").asText()).isEqualTo("资深Java工程师/技术负责人");
+        assertThat(section(doc, "skills").path("title").asText()).isEqualTo("专业技术");
+        assertThat(section(doc, "skills").path("items").get(0).path("body").asText()).contains("精通Java");
+        assertThat(section(doc, "custom").path("items")).isEmpty();
+        var ids = new java.util.ArrayList<String>();
+        doc.path("sections").forEach(item -> ids.add(item.path("id").asText()));
+        assertThat(ids).containsExactly("skills", "evaluation", "work", "custom");
+        assertThat(doc.path("importStyle").path("metaStyle").asText()).isNotEqualTo("inline");
+        assertThatCode(() -> new ResumeValidator().validate(doc, draft.path("appearance"))).doesNotThrowAnyException();
+    }
+
+    @Test void keepsDottedDateSeparatorsFromTheOriginalFile() {
+        var doc = mapper.draft("工作经历\n深圳东郊未来科技有限公司    Java工程师  2023.09 — 2026.11\n负责维护", "dots.pdf")
+                .path("document");
+        assertThat(doc.path("importStyle").path("dateStyle").asText()).isEqualTo("dot");
+    }
+
+    @Test void dropsPageNumbersInsteadOfTreatingThemAsResumeContent() {
+        String source = "李昌浩\n13800000000\n个人概述\n第一段\n1 / 3\n专业技能\nJava / JVM\n2 / 3\n自我评价\n认真负责\n3 / 3";
+        var doc = mapper.draft(source, "x.pdf").path("document");
+        assertThat(doc.toString()).doesNotContain("1 / 3", "2 / 3", "3 / 3");
+        assertThat(section(doc, "summary").path("items").get(0).path("body").asText()).contains("第一段");
+        assertThat(section(doc, "skills").path("items").get(0).path("body").asText()).contains("Java / JVM");
+        assertThat(section(doc, "custom").path("items")).isEmpty();
     }
 }

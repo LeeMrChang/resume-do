@@ -458,7 +458,7 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
       const image = new Image();
       image.src = photo;
       await image.decode();
-      updateDocument(draft => { draft.basic.photo = photo; });
+      updateDocument(draft => { draft.basic.photo = photo; draft.basic.showPhoto = true; });
       showToast('照片已更新，正在保存');
     } catch {
       showToast('无法读取照片，请选择有效图片');
@@ -1340,7 +1340,7 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
                         展示照片
                       </label>
                     </div>
-                    <p className="note">PNG、JPEG 或 WebP，288KB 以内；未上传时模板显示姓名首字。导入 PDF / DOCX 请使用顶部“导入简历”。关闭“展示照片”后预览与编辑版导出均隐藏，照片数据保留。</p>
+                    <p className="note">PNG、JPEG 或 WebP，288KB 以内。导入的原件没有照片时不会生成头像；其他模板未上传照片时显示姓名首字。关闭“展示照片”后预览与编辑版导出均隐藏，照片数据保留。</p>
                   </div>
                   <Field
                     label="姓名"

@@ -53,13 +53,16 @@ const CLASSIC_ROW_KEYS: readonly BasicFieldKey[] = [
   'weight',
 ];
 
-function basicValue(basic: ResumeBasic, key: BasicFieldKey): string {
-  if (key === 'age') return basic.birthMonth ? ageFromBirthMonth(basic.birthMonth) : basic.age ?? '';
+function basicValue(basic: ResumeBasic, key: BasicFieldKey, deriveAge = true): string {
+  if (key === 'age') {
+    if (deriveAge && basic.birthMonth) return ageFromBirthMonth(basic.birthMonth);
+    return basic.age ?? '';
+  }
   return basic[key] ?? '';
 }
 
-function basicEntry(basic: ResumeBasic, key: BasicFieldKey) {
-  return { icon: key as ContactIcon, label: BASIC_LABELS[key], value: basicValue(basic, key) };
+function basicEntry(basic: ResumeBasic, key: BasicFieldKey, deriveAge = true) {
+  return { icon: key as ContactIcon, label: BASIC_LABELS[key], value: basicValue(basic, key, deriveAge) };
 }
 
 function hasText(html: string): boolean {
@@ -75,8 +78,8 @@ function spacedLabel(label: string): string {
   return label.length === 2 ? `${label[0]}\u3000\u3000${label[1]}` : label;
 }
 
-function formatRange(item: ResumeRecordItem, iso: boolean): string {
-  if (iso) {
+function formatRange(item: ResumeRecordItem, style: 'iso' | 'dotted'): string {
+  if (style === 'iso') {
     const start = item.startMonth;
     const end = item.ongoing ? '至今' : item.endMonth;
     if (start && end) return `${start} ~ ${end}`;
@@ -94,12 +97,12 @@ function headerBlock(input: RenderInput): ResumeBlock {
   const intent = document.intent;
   const spec = getTemplateSpec(appearance.templateId);
   const classic = spec.header === 'classic';
+  const importStyle = spec.id === 'imported' ? document.importStyle : undefined;
+  const inlineMeta = importStyle?.metaStyle === 'inline';
+  const centeredHeader = importStyle?.headerAlign === 'center';
+  const showIcons = spec.id !== 'imported';
   const intentValues = intentFieldOrder(intent).map(key => intent[key]).filter(Boolean);
-  const intentLine = classic
-    ? intent.role || intent.city
-      ? `求职意向：${intentValues.join('｜')}`
-      : ''
-    : intentValues.join(' · ');
+  const intentLine = classic && !inlineMeta ? '' : intentValues.join(' · ');
   const basicKeys = basicFieldOrder(basic);
   const metaItems = basicKeys
     .filter(key => MODERN_META_KEYS.has(key))
@@ -107,7 +110,9 @@ function headerBlock(input: RenderInput): ResumeBlock {
       const value = basic[key];
       return value ? [{ key, value }] : [];
     });
-  const showPhoto = spec.photo !== false && basic.showPhoto !== false;
+  // The imported skin never invents an avatar: a source without a photo has no photo slot.
+  const showPhoto =
+    spec.photo !== false && basic.showPhoto !== false && (Boolean(basic.photo) || spec.id !== 'imported');
   const name = basic.name || '你的姓名';
   const initial = Array.from(name)[0] ?? '简';
   const photo = basic.photo
@@ -116,9 +121,16 @@ function headerBlock(input: RenderInput): ResumeBlock {
 
   if (classic) {
     const rowKeys = Array.isArray(basic.fieldOrder) && basic.fieldOrder.length ? basicKeys : CLASSIC_ROW_KEYS;
+    // Labelled sources print 求职意向 as one of their label/value cells.
+    const intentRow = !inlineMeta && intentValues.length
+      ? [{ label: '求职意向', value: intentValues.join('｜') }]
+      : [];
     const rows = ([
-      ...rowKeys.map(key => basicEntry(basic, key)),
+      // The source prints 求职意向 above the personal details.
+      ...(spec.id === 'imported' ? intentRow : []),
+      ...rowKeys.map(key => basicEntry(basic, key, spec.id !== 'imported')),
       ...(basic.customFields ?? []),
+      ...(spec.id === 'imported' ? [] : intentRow),
     ] as { icon?: ContactIcon; label: string; value?: string }[]).filter(
       (row): row is { icon?: ContactIcon; label: string; value: string } => Boolean(row.value),
     );
@@ -126,17 +138,22 @@ function headerBlock(input: RenderInput): ResumeBlock {
       ? `<div class="r-meta r-meta-grid">${rows
           .map(
             ({ icon, label, value }) =>
-              `<span class="r-contact">${icon ? contactIcon(icon) : ''}<em>${escapeHtml(spacedLabel(label))}</em><span>${escapeHtml(value)}</span></span>`,
+              `<span class="r-contact${spec.id === 'imported' && label === '求职意向' ? ' r-intent-row' : ''}">${icon && showIcons ? contactIcon(icon) : ''}<em>${escapeHtml(spacedLabel(label))}</em><span>${escapeHtml(value)}</span></span>`,
           )
           .join('')}</div>`
       : '';
+    const meta =
+      inlineMeta && rows.length
+        ? `<div class="r-meta r-meta-inline"><span>${escapeHtml(rows.map(row => row.value).join(' · '))}</span></div>`
+        : grid;
+    const introClass = centeredHeader ? 'r-intro r-intro-center' : 'r-intro';
     const html = [
-      '<div class="r-intro">',
+      `<div class="${introClass}">`,
       showPhoto ? `<div class="r-intro-photo">${photo}</div>` : '',
       '<div class="r-intro-main">',
       `<h1>${escapeHtml(name)}</h1>`,
       intentLine ? `<p class="r-intent">${escapeHtml(intentLine)}</p>` : '',
-      grid,
+      meta,
       '</div>',
       '</div>',
     ].join('');
@@ -188,7 +205,12 @@ function stampSection(blocks: ResumeBlock[], sectionId: string): ResumeBlock[] {
   return blocks;
 }
 
-function sectionBlocks(section: ResumeSection, sectionIndex: number, spec: ReturnType<typeof getTemplateSpec>): ResumeBlock[] {
+function sectionBlocks(
+  section: ResumeSection,
+  sectionIndex: number,
+  spec: ReturnType<typeof getTemplateSpec>,
+  importStyle: ResumeDocument['importStyle'],
+): ResumeBlock[] {
   if (!section.visible) return [];
 
   const prefix = `s${sectionIndex}`;
@@ -227,38 +249,35 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number, spec: Retur
   });
 
   records.forEach((item, recordIndex) => {
-    const range = formatRange(item, Boolean(spec.isoDates));
+    const range = formatRange(
+      item,
+      spec.isoDates && importStyle?.dateStyle !== 'dot' ? 'iso' : 'dotted',
+    );
     const bodyBlocks = richBlocks(item.body, `${prefix}-r${recordIndex}`);
     const hasFollowing = Boolean(item.role.trim() || bodyBlocks.length);
+    const dateFirst = importStyle?.recordHead === 'date-first';
+    const title = item.title.trim()
+      ? `<span class="r-record-title">${escapeHtml(item.title)}</span>`
+      : '';
+    const role = item.role.trim() ? `<span class="r-record-role">${escapeHtml(item.role)}</span>` : '';
+    const date = range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '';
 
-    blocks.push({
-      id: `${prefix}-r${recordIndex}-head`,
-      kind: 'record-head',
-      keepWithNext: hasFollowing,
-      html: spec.recordInline
-        ? [
-            '<div class="r-record r-record-inline">',
-            range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '<span></span>',
-            `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
-            item.role.trim() ? `<span class="r-record-role">${escapeHtml(item.role)}</span>` : '<span></span>',
-            '</div>',
-          ].join('')
-        : spec.inlineRole
-          ? [
-              '<div class="r-record r-record-combo">',
-              `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
-              item.role.trim() ? `<span class="r-record-role">· ${escapeHtml(item.role)}</span>` : '',
-              range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '',
-              '</div>',
-            ].join('')
-          : [
-              '<div class="r-record">',
-              `<span class="r-record-title">${escapeHtml(item.title || '未命名经历')}</span>`,
-              range ? `<span class="r-record-date">${escapeHtml(range)}</span>` : '',
-              '</div>',
-            ].join(''),
-      plainText: `${item.title} ${item.role} ${range}`.trim(),
-    });
+    // A body-only entry has no heading in the source, so the template must not invent one.
+    if (title || role || date) {
+      blocks.push({
+        id: `${prefix}-r${recordIndex}-head`,
+        kind: 'record-head',
+        keepWithNext: hasFollowing,
+        html: spec.recordInline
+          ? dateFirst
+            ? `<div class="r-record r-record-inline r-record-date-first">${date}${title}${role}</div>`
+            : `<div class="r-record r-record-inline">${title}${role}${date}</div>`
+          : spec.inlineRole
+            ? `<div class="r-record r-record-combo">${title}${role ? `<span class="r-record-role">· ${escapeHtml(item.role)}</span>` : ''}${date}</div>`
+            : `<div class="r-record">${title}${date}</div>`,
+        plainText: `${item.title} ${item.role} ${range}`.trim(),
+      });
+    }
 
     if (!spec.recordInline && !spec.inlineRole && item.role.trim()) {
       blocks.push({
@@ -278,9 +297,10 @@ function sectionBlocks(section: ResumeSection, sectionIndex: number, spec: Retur
 
 export function buildBlocks(input: RenderInput): ResumeBlock[] {
   const spec = getTemplateSpec(input.appearance.templateId);
+  const importStyle = spec.id === 'imported' ? input.document.importStyle : undefined;
   const blocks: ResumeBlock[] = [headerBlock(input)];
   input.document.sections.forEach((section, index) => {
-    blocks.push(...sectionBlocks(section, index, spec));
+    blocks.push(...sectionBlocks(section, index, spec, importStyle));
   });
   return blocks;
 }
