@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 import { createDefaultAppearance, createDefaultDocument } from '@resume-do/schema';
 
 // v2.2 overwrites the resume being edited in place. API is isolated; no personal files or real DB.
-test('v2.2 import overwrites the current resume, exports original bytes and clears content after confirmation', { timeout: 90_000 }, async () => {
+test('v2.2 import overwrites the current resume, exports the edited version and clears content after confirmation', { timeout: 90_000 }, async () => {
  const base='http://localhost:4199';
  const dist=path.resolve(fileURLToPath(new URL('../dist/',import.meta.url)));
  const fixture=await readFile(new URL('./fixtures/original-mixed.pdf',import.meta.url));
@@ -34,15 +34,22 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   await page.route('**/api/**',async route=>{
    const url=new URL(route.request().url()), method=route.request().method();
    if(url.pathname==='/api/auth/me') return route.fulfill({json:{id:99,email:'overwrite-test@example.invalid',displayName:'v2.2 test'}});
-   if(url.pathname.endsWith('/exports')) { exports++; throw Error('Original must not export'); }
+   if(url.pathname.endsWith('/exports')) {
+    exports++;
+    const body=route.request().postDataJSON();
+    assert.equal(body.revision,record.revision);
+    assert.equal((record.appearance as {fontSize:number}).fontSize,18);
+    return route.fulfill({json:{id:'edited-export',status:'ready',filename:body.filename}});
+   }
+   if(url.pathname==='/api/exports/edited-export/file') return route.fulfill({body:fixture,contentType:'application/pdf'});
    if(url.pathname==='/api/imports/direct') throw Error('Editor must overwrite the current resume, not create one');
    if(url.pathname==='/api/imports/direct/original-test') {
     assert.equal(method,'POST'); imports++;
     const document=createDefaultDocument(); document.basic.name='覆盖测试';
     document.importStyle={fontSizePx:14.52};
-    record={...record,revision:(record.revision as number)+1,document,
+    record={...record,title:"lichanghao_prod",revision:(record.revision as number)+1,document,
       appearance:{...createDefaultAppearance(),templateId:'imported',fontSize:15},
-      source:{filename:'第二版.pdf',mime:'application/pdf',bytes:fixture.length,pages:3},updatedAt:new Date().toISOString()};
+      source:{filename:'lichanghao_prod.pdf',mime:'application/pdf',bytes:fixture.length,pages:3},updatedAt:new Date().toISOString()};
     return route.fulfill({json:record});
    }
    if(url.pathname==='/api/resumes' && method==='GET') return route.fulfill({json:[record]});
@@ -71,12 +78,13 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   await page.getByText('导入简历后，当前简历内容将被覆盖！',{exact:true}).waitFor();
   await page.getByText('建议先确认当前简历内容已备份，再继续操作。',{exact:true}).waitFor();
   await page.getByRole('button',{name:'确认覆盖并导入',exact:true}).click();
-  await page.getByLabel('选择 PDF 或 DOCX 简历').setInputFiles({name:'第二版.pdf',mimeType:'application/pdf',buffer:fixture});
+  await page.getByLabel('选择 PDF 或 DOCX 简历').setInputFiles({name:'lichanghao_prod.pdf',mimeType:'application/pdf',buffer:fixture});
   await page.waitForFunction(()=>{
    const field=Array.from(document.querySelectorAll('label')).find(label=>label.firstChild?.textContent?.trim()==='姓名')?.querySelector('input');
    return field?.value==='覆盖测试';
   });
   assert.equal(imports,1);
+  assert.equal(await page.getByLabel('简历名称').inputValue(),'lichanghao_prod');
 
   const waitForSize=async (size:string)=>{
    await page.waitForFunction(expected=>{
@@ -98,6 +106,7 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   await page.reload();
   await page.locator('.resume-card .card-open').first().click();
   await waitForSize('18px');
+  assert.equal(await page.getByLabel('简历名称').inputValue(),'lichanghao_prod');
   assert.equal(patches,1);
 
   const fab=page.getByRole('button',{name:'↓ 下载 / 导出简历',exact:true});
@@ -106,9 +115,10 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   const lastPageBottom=await page.locator('.pages .r-page').last().evaluate(el=>el.getBoundingClientRect().bottom);
   assert.ok(fabBox && fabBox.y>=lastPageBottom,'Download button sits below the last preview page');
   await fab.click();
-  assert.equal(await page.getByRole('radio',{name:/原件版/}).isChecked(),true);
-  const download=page.waitForEvent('download'); await page.getByRole('button',{name:'下载原件版',exact:true}).click();
-  const downloaded=await download; const file=await downloaded.path(); assert.ok(file); assert.deepEqual(await readFile(file),fixture); assert.equal(exports,0);
+  assert.equal(await page.getByRole('dialog').getByRole('radio').count(),0);
+  await page.getByText('当前编辑版',{exact:true}).waitFor();
+  const download=page.waitForEvent('download'); await page.getByRole('dialog').getByRole('button',{name:'下载 PDF',exact:true}).click();
+  const downloaded=await download; const file=await downloaded.path(); assert.ok(file); assert.deepEqual(await readFile(file),fixture); assert.equal(exports,1);
   await page.getByRole('button',{name:'关闭',exact:true}).last().click();
 
   await page.getByRole('button',{name:'清空内容',exact:true}).click();
@@ -116,7 +126,7 @@ test('v2.2 import overwrites the current resume, exports original bytes and clea
   await page.getByRole('button',{name:'确认清空',exact:true}).click();
   await page.getByText('已清空当前简历内容',{exact:true}).waitFor();
   assert.equal(await page.getByLabel('姓名',{exact:true}).inputValue(),'');
-  assert.equal(await page.getByLabel('简历名称').inputValue(),'我的简历');
+  assert.equal(await page.getByLabel('简历名称').inputValue(),'lichanghao_prod');
   assert.equal(patches,2);
 
   await page.reload();

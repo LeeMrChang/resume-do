@@ -1632,6 +1632,132 @@ input[readonly] {
   white-space: nowrap;
 }
 
+.export-content {
+  padding-top: 4px;
+}
+
+.export-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border-muted);
+  border-radius: 12px;
+  background: var(--canvas-subtle);
+}
+
+.export-file-icon {
+  flex: 0 0 48px;
+  color: var(--brand);
+  text-align: center;
+}
+
+.export-file-icon svg {
+  display: block;
+  width: 32px;
+  height: 36px;
+  margin: 0 auto 4px;
+}
+
+.export-file-icon span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.export-file-info {
+  min-width: 0;
+}
+
+.export-edition {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.export-filename {
+  margin: 6px 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.export-caption,
+.export-hint,
+.export-status p {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.export-caption {
+  margin: 0;
+}
+
+.export-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.export-details dt {
+  color: var(--fg-muted);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.export-details dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.export-details dd span {
+  display: block;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.export-hint {
+  margin: 0;
+}
+
+.export-status {
+  font-size: 13px;
+}
+
+.export-status p {
+  margin: 8px 0 0;
+}
+
+.export-status .progress {
+  margin: 12px 0;
+}
+
+.export-content footer {
+  padding-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .export-summary {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .export-file-icon {
+    flex-basis: 34px;
+  }
+
+  .export-content footer button {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
 .error {
   color: var(--danger);
   background: var(--danger-subtle);
@@ -2915,4 +3041,72 @@ button.danger-text:hover:not(:disabled) {
   .topbar .user-chip {
     display: none;
   }
+}
+
+/* Account-level template favorites; these controls do not select the template. */
+.template-scope {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.template-scope button[aria-pressed='true'] {
+  color: var(--brand);
+  background: var(--success-subtle);
+  border-color: var(--brand);
+}
+
+.template-favorite-btn {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg-muted);
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.template-favorite-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.template-favorite-btn[aria-pressed='true'] {
+  color: var(--warning);
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+
+.template-favorite-btn:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.template-favorite-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--danger);
+  font-size: 12px;
+  padding: 10px 0;
+}
+
+.template-empty {
+  padding: 36px 16px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+.template-empty p {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.7;
 }

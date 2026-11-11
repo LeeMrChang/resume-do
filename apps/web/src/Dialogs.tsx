@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'rea
 import { createPortal } from 'react-dom';
 import { createDefaultAppearance, type ResumeAppearance, type ResumeDocument } from '@resume-do/schema';
 import { TEMPLATE_CATALOG, TEMPLATE_GROUPS, normalizeTemplateId, renderThumbnailFragment, type TemplateSpec } from '@resume-do/templates';
-import { api, ApiError, type ExportJob, type OriginalSource } from './api';
+import { api, ApiError, type ExportJob } from './api';
 import { waitForExport } from './exportPolling';
 import { FONT_OPTIONS, loadFont } from './fonts';
 import Preview from './Preview';
@@ -178,10 +178,63 @@ export function AppearanceDialog({
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('全部');
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
+  const [favoritesLoading, setFavoritesLoading] = useState(true);
+  const [favoriteError, setFavoriteError] = useState('');
+  const [favoritesReload, setFavoritesReload] = useState(0);
+  const [pendingFavorites, setPendingFavorites] = useState<Set<string>>(new Set());
+  const pendingFavoritesRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (kind !== 'template') return;
+    let alive = true;
+    const controller = new AbortController();
+    setFavoritesLoading(true);
+    setFavoriteError('');
+    void api.getTemplateFavorites(controller.signal)
+      .then(ids => {
+        if (!alive) return;
+        setFavorites(new Set(ids));
+        setFavoritesLoaded(true);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setFavoritesLoaded(false);
+        setFavoriteError('收藏加载失败，请重试。');
+      })
+      .finally(() => { if (alive) setFavoritesLoading(false); });
+    return () => { alive = false; controller.abort(); };
+  }, [kind, favoritesReload]);
+
+  async function toggleFavorite(templateId: string) {
+    if (!favoritesLoaded || favoritesLoading || pendingFavoritesRef.current.has(templateId)) return;
+    pendingFavoritesRef.current.add(templateId);
+    setPendingFavorites(new Set(pendingFavoritesRef.current));
+    setFavoriteError('');
+    const removing = favorites.has(templateId);
+    try {
+      if (removing) await api.removeTemplateFavorite(templateId);
+      else await api.addTemplateFavorite(templateId);
+      setFavorites(current => {
+        const next = new Set(current);
+        if (removing) next.delete(templateId); else next.add(templateId);
+        return next;
+      });
+    } catch {
+      setFavoriteError(removing ? '取消收藏失败，请再次点击星标重试。' : '收藏失败，请再次点击星标重试。');
+    } finally {
+      pendingFavoritesRef.current.delete(templateId);
+      setPendingFavorites(new Set(pendingFavoritesRef.current));
+    }
+  }
+
   const thumbnails = useMemo(() => kind === 'template'
     ? new Map(TEMPLATE_CATALOG.map(spec => [spec.id, renderThumbnailFragment(createDefaultAppearance(), spec.id)]))
     : new Map<string, string>(), [kind]);
   const filtered = TEMPLATE_CATALOG.filter(spec =>
+    (!favoritesOnly || favorites.has(spec.id)) &&
     (group === '全部' || spec.group === group) &&
     `${spec.id} ${spec.name} ${spec.group}`.includes(query.trim()),
   );
@@ -318,6 +371,12 @@ export function AppearanceDialog({
       {kind === 'template' && (
         <>
           <div className="template-controls">
+            <div className="template-scope" role="group" aria-label="模板范围">
+              <button type="button" aria-pressed={!favoritesOnly} onClick={() => setFavoritesOnly(false)}>全部模板</button>
+              <button type="button" aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(true)}>
+                我的收藏{favoritesLoaded ? `（${favorites.size}）` : ''}
+              </button>
+            </div>
             <label>搜索模板
               <input type="search" placeholder="输入名称或编号，例如 1045" value={query}
                 onChange={event => setQuery(event.target.value)} />
@@ -328,6 +387,11 @@ export function AppearanceDialog({
                   onClick={() => setGroup(item)}>{item}</button>
               ))}
             </div>
+            {favoritesLoading && <p className="note" role="status">正在加载收藏…</p>}
+            {favoriteError && <div className="template-favorite-error" role="alert">
+              <span>{favoriteError}</span>
+              {!favoritesLoaded && <button type="button" onClick={() => setFavoritesReload(value => value + 1)} disabled={favoritesLoading}>重新加载收藏</button>}
+            </div>}
             <p className="note" role="status">共 {TEMPLATE_CATALOG.length} 套模板，当前显示 {filtered.length} 套。点击卡片选中，点“预览”用当前简历查看整页效果，应用后保存。</p>
           </div>
           <div className="template-grid">
@@ -344,6 +408,17 @@ export function AppearanceDialog({
                   <b>{spec.name} <span className="template-id">{spec.id}</span></b>
                   <small>{spec.group}</small>
                 </button>
+                <button type="button" className="template-favorite-btn"
+                  aria-label={`${favorites.has(spec.id) ? '取消收藏' : '收藏'}模板 ${spec.id} ${spec.name}`}
+                  aria-pressed={favorites.has(spec.id)}
+                  aria-busy={pendingFavorites.has(spec.id)}
+                  title={favorites.has(spec.id) ? '取消收藏' : '收藏模板'}
+                  disabled={!favoritesLoaded || favoritesLoading || pendingFavorites.has(spec.id)}
+                  onClick={() => void toggleFavorite(spec.id)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill={favorites.has(spec.id) ? 'currentColor' : 'none'}>
+                    <path d="m12 3 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2L12 17.3l-5.7 2.9 1.1-6.2L3 9.6l6.2-.9Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+                  </svg>
+                </button>
                 <button type="button" className="template-preview-btn"
                   aria-label={`预览模板 ${spec.id} ${spec.name}`}
                   onClick={() => setPreviewId(spec.id)}>
@@ -352,7 +427,13 @@ export function AppearanceDialog({
               </div>
             ))}
           </div>
-          {filtered.length === 0 && <p className="note">没有匹配的模板，请换个关键词。</p>}
+          {filtered.length === 0 && !favoritesLoading && favoritesLoaded && (
+            <div className="template-empty">
+              <b>{favoritesOnly && favorites.size === 0 ? '还没有收藏模板' : '没有匹配的模板'}</b>
+              <p>{favoritesOnly && favorites.size === 0 ? '在“全部模板”中点击卡片左上角的星标，喜欢的模板就会出现在这里。' : '试试其他关键词或模板风格。'}</p>
+              {favoritesOnly && <button type="button" onClick={() => { setFavoritesOnly(false); setQuery(''); setGroup('全部'); }}>浏览全部模板</button>}
+            </div>
+          )}
         </>
       )}
 
@@ -423,60 +504,56 @@ export function RenameDialog({
   );
 }
 
-type ExportPhase = 'choosing' | 'preparing' | 'working' | 'ready' | 'failed';
+type ExportPhase = 'idle' | 'preparing' | 'working' | 'ready' | 'failed';
 
 export function ExportDialog({
   resumeId,
-  source,
   defaultFilename,
   pageCount,
   ensureSaved,
   onClose,
 }: {
   resumeId: string;
-  source?: OriginalSource | null;
   defaultFilename: string;
   pageCount: number;
   ensureSaved: () => Promise<number | null>;
   onClose: () => void;
 }) {
-  const hasOriginalPdf = source?.mime === 'application/pdf';
-  const [version, setVersion] = useState<'original' | 'edited'>(hasOriginalPdf ? 'original' : 'edited');
-  const [phase, setPhase] = useState<ExportPhase>(hasOriginalPdf ? 'choosing' : 'preparing');
+  const [phase, setPhase] = useState<ExportPhase>('idle');
   const [job, setJob] = useState<ExportJob | null>(null);
   const [error, setError] = useState('');
   const [downloaded, setDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
   const keyRef = useRef<string>('');
-  const startedRef = useRef(false);
+  const startingRef = useRef(false);
   const downloadedRef = useRef(false);
+  const downloadingRef = useRef(false);
 
   function messageOf(err: unknown): string {
     return err instanceof ApiError ? err.message : '网络异常，请稍后重试';
   }
 
   async function downloadFile(target: ExportJob) {
+    if (downloadingRef.current) return;
+    downloadingRef.current = true;
+    setDownloading(true);
+    setDownloadError('');
     try {
       await api.downloadExport(target.id, target.filename);
       downloadedRef.current = true;
       setDownloaded(true);
     } catch (err) {
       setDownloadError(messageOf(err));
+    } finally {
+      downloadingRef.current = false;
+      setDownloading(false);
     }
   }
 
   async function start() {
-    if (version === 'original') {
-      setPhase('preparing'); setError(''); setDownloadError('');
-      try {
-        if (await ensureSaved() == null) {
-          throw new Error('最新名称尚未保存成功，请先解决保存问题后再下载');
-        }
-        await api.downloadSource(resumeId, defaultFilename);
-        setDownloaded(true); setPhase('ready');
-      } catch (err) { setError(messageOf(err)); setPhase('failed'); }
-      return;
-    }
+    if (startingRef.current) return;
+    startingRef.current = true;
     setPhase('preparing');
     setError('');
     setDownloadError('');
@@ -484,15 +561,14 @@ export function ExportDialog({
     setDownloaded(false);
     setJob(null);
 
-    const revision = await ensureSaved();
-    if (revision == null) {
-      setPhase('failed');
-      setError('最新修改尚未保存成功。请先解决保存失败或版本冲突，再导出，避免生成旧内容。');
-      return;
-    }
-
-    if (!keyRef.current) keyRef.current = crypto.randomUUID();
     try {
+      const revision = await ensureSaved();
+      if (revision == null) {
+        setPhase('failed');
+        setError('最新修改尚未保存成功。请先解决保存失败或版本冲突，再导出，避免生成旧内容。');
+        return;
+      }
+      if (!keyRef.current) keyRef.current = crypto.randomUUID();
       const created = await api.createExport(resumeId, {
         revision,
         idempotencyKey: keyRef.current,
@@ -511,15 +587,10 @@ export function ExportDialog({
     } catch (err) {
       setPhase('failed');
       setError(messageOf(err));
+    } finally {
+      startingRef.current = false;
     }
   }
-
-  useEffect(() => {
-    if (startedRef.current || hasOriginalPdf) return;
-    startedRef.current = true;
-    void start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (phase !== 'working' || !job) return;
@@ -555,102 +626,72 @@ export function ExportDialog({
       return;
     }
     keyRef.current = '';
-    setPhase('preparing');
     void start();
   }
+
+  const busy = phase === 'preparing' || phase === 'working';
+  const filename = job?.filename || defaultFilename;
+  const checking = job?.status === 'queued' || job?.status === 'rendering';
 
   return (
     <Modal
       title="导出 PDF"
-      subtitle={version === 'original' ? '原件版 · 原始文件字节与分页，保留全部内容' : '编辑版 · 按当前模板生成 PDF'}
+      subtitle="将当前编辑的内容与排版保存为 PDF。"
       onClose={onClose}
     >
-      {hasOriginalPdf && <fieldset disabled={phase !== 'choosing'}>
-        <legend>选择导出版本</legend>
-        <label><input type="radio" name="export-version" checked={version === 'original'} onChange={() => setVersion('original')} /> 原件版（默认）：原文件，不包含编辑修改</label>
-        <label><input type="radio" name="export-version" checked={version === 'edited'} onChange={() => setVersion('edited')} /> 编辑版：当前内容与模板</label>
-      </fieldset>}
-      {source && !hasOriginalPdf && <p className="note">Word 原件暂不支持原件版下载，PDF 导出使用编辑版。</p>}
-      <div className="status-line">
-        <span>页面</span>
-        <span>
-          {version === 'original' ? `原文件尺寸 · 共 ${source?.pages ?? '未知'} 页` : `A4 · 210 × 297mm · 共 ${pageCount} 页`}
-        </span>
-      </div>
-      <div className="status-line">
-        <span>文件名</span>
-        <span className="filename">{job?.filename || defaultFilename}</span>
-      </div>
-
-      {phase === 'choosing' && <footer>
-        <button type="button" onClick={onClose}>取消</button>
-        <button type="button" className="primary" onClick={() => void start()}>下载{version === 'original' ? '原件版' : '编辑版'}</button>
-      </footer>}
-      {phase === 'preparing' && (
-        <>
-          <div className="progress" aria-hidden="true">
-            <span />
+      <div className="export-content">
+        <div className="export-summary">
+          <div className="export-file-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 36" fill="none">
+              <path d="M7 2h12l7 7v23a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="2" />
+              <path d="M19 2v8h7M10 18h11M10 24h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span>PDF</span>
           </div>
-          <p className="note">{version === 'original' ? '正在下载原文件…' : '正在保存最新修改并固定导出快照…'}</p>
-        </>
-      )}
-
-      {phase === 'working' && (
-        <>
-          <div className="progress" aria-hidden="true">
-            <span />
+          <div className="export-file-info">
+            <span className="export-edition">当前编辑版</span>
+            <p className="export-filename">{filename}</p>
+            <p className="export-caption">包含最新修改，使用当前模板与样式</p>
           </div>
-          <p className="note">{job?.status === 'queued' ? '任务已排队，正在等待 PDF 服务接单…' : '正在生成 PDF，完成后会自动下载。'}</p>
-        </>
-      )}
-
-      {phase === 'ready' && (
-        <div className="success">
-          <b>{downloaded ? '文件已开始下载。' : '文件已生成。'}</b>
-          <p>
-            {version === 'original' ? '下载的是上传原件，文件字节保持一致。编辑修改仅在编辑版体现。' : '下载链接 10 分钟内有效；如浏览器未自动保存，请点击“再次下载”。导出使用本次快照。'}
-          </p>
-          {downloadError && (
-            <p className="error" role="alert">
-              {downloadError}
-            </p>
-          )}
-          <footer>
-            <button type="button" onClick={onClose}>
-              关闭
-            </button>
-            {hasOriginalPdf && <button type="button" onClick={() => { setPhase('choosing'); setJob(null); keyRef.current=''; }}>重新选择版本</button>}
-            <button
-              type="button"
-              className="primary"
-              onClick={() => {
-                if (version === 'original') void start();
-                else if (job) void downloadFile(job);
-              }}
-            >
-              再次下载
-            </button>
-          </footer>
         </div>
-      )}
+        <dl className="export-details">
+          <div><dt>纸张尺寸</dt><dd>A4 <span>210 × 297 mm</span></dd></div>
+          <div><dt>预览页数</dt><dd>共 {pageCount} 页</dd></div>
+        </dl>
 
-      {phase === 'failed' && (
-        <>
-          <div className="error" role="alert">
-            {error || '导出失败，请重试。'}
+        {phase === 'idle' && <p className="export-hint">点击下载后会先保存最新修改，生成完成后自动下载。</p>}
+        {busy && (
+          <div className="export-status" role="status" aria-live="polite">
+            <b>{phase === 'preparing' ? '正在保存最新修改' : job?.status === 'queued' ? '正在等待生成' : '正在生成 PDF'}</b>
+            <div className="progress" aria-hidden="true"><span /></div>
+            <p>完成后会自动下载，请稍候。</p>
           </div>
-          <p className="note">导出失败不会扣减次数，也不会改变简历内容。</p>
-          <footer>
-            {hasOriginalPdf && <button type="button" onClick={() => { setPhase('choosing'); setJob(null); keyRef.current=''; }}>重新选择版本</button>}
-            <button type="button" onClick={onClose}>
-              返回编辑
+        )}
+        {phase === 'ready' && (
+          <div className="export-status success" role="status" aria-live="polite">
+            <b>{downloaded ? '文件已开始下载' : 'PDF 已生成'}</b>
+            <p>文件包含本次导出的内容与排版。下载链接 10 分钟内有效，可再次下载。</p>
+            {downloadError && <p className="error" role="alert">{downloadError}</p>}
+          </div>
+        )}
+        {phase === 'failed' && (
+          <div className="export-status">
+            <div className="error" role="alert">{error || '导出失败，请重试。'}</div>
+            <p>当前简历内容已保留，可返回编辑或重试。</p>
+          </div>
+        )}
+        <footer>
+          <button type="button" onClick={onClose}>{phase === 'idle' ? '取消' : phase === 'ready' ? '关闭' : '返回编辑'}</button>
+          {phase === 'idle' && <button type="button" className="primary" onClick={() => void start()}>下载 PDF</button>}
+          {busy && <button type="button" className="primary" disabled>正在生成…</button>}
+          {phase === 'ready' && (
+            <button type="button" className="primary" disabled={downloading} onClick={() => { if (job) void downloadFile(job); }}>
+              {downloading ? '正在下载…' : '再次下载'}
             </button>
-            <button type="button" className="primary" onClick={retry}>
-              {job?.status === 'queued' || job?.status === 'rendering' ? '检查进度' : '重试'}
-            </button>
-          </footer>
-        </>
-      )}
+          )}
+          {phase === 'failed' && <button type="button" className="primary" onClick={retry}>{checking ? '检查进度' : '重新生成'}</button>}
+        </footer>
+      </div>
     </Modal>
   );
 }

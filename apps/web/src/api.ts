@@ -142,6 +142,10 @@ export const api = {
       body: JSON.stringify({ themePreference }),
     }),
 
+  getTemplateFavorites: (signal?: AbortSignal) => request<string[]>('/api/template-favorites', { signal }),
+  addTemplateFavorite: (templateId: string) => request<void>(`/api/template-favorites/${encodeURIComponent(templateId)}`, { method: 'PUT' }),
+  removeTemplateFavorite: (templateId: string) => request<void>(`/api/template-favorites/${encodeURIComponent(templateId)}`, { method: 'DELETE' }),
+
   openLegacyEditor: (id: string) => request<ResumeResponse>(`/api/imports/from-original/${id}`, { method: 'POST' }),
   importEditable: (file: File) => {
     const body = new FormData(); body.append('file', file);

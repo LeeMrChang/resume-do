@@ -78,6 +78,10 @@ public class ResumeValidator {
             .addAttributes("img", "src", "alt", "width", "height")
             .addProtocols("img", "src", "data");
 
+    public static boolean supportsTemplate(String id) {
+        return id != null && TEMPLATE_IDS.contains(id);
+    }
+
     public record Validated(JsonNode document, JsonNode appearance, int schemaVersion, String templateId) {
     }
 

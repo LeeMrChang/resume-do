@@ -107,7 +107,7 @@ public class OriginalResumeService {
                         .orElseThrow(() -> ApiException.notFound("简历不存在"));
                     if(!"structured".equals(current.kind())) throw ApiException.badRequest("只能覆盖可编辑简历");
                     int changed=resumes.replaceImported(owner,existingId,content.document().toString(),content.appearance().toString(),
-                        content.schemaVersion(),content.templateId(),key,filename,mime,bytes,hash,pageCount);
+                        content.schemaVersion(),content.templateId(),key,filename,mime,bytes,hash,pageCount,name);
                     if(changed!=1) throw new IllegalStateException("覆盖简历失败，请重试");
                     final String previousKey=current.sourceKey();
                     if(previousKey!=null && !previousKey.equals(key))

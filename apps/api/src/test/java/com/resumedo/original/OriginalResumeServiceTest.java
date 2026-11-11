@@ -163,15 +163,15 @@ class OriginalResumeServiceTest {
         try(var files=Files.walk(root)) { assertThat(files.filter(Files::isRegularFile).count()).isZero(); }
     }
 
-    @Test void replaceKeepsResumeIdentityTitleAndSwapsSourceInPlace() throws Exception {
+    @Test void replaceKeepsIdentityAndUsesImportedFilenameAsTitle() throws Exception {
         String id="b".repeat(32);
         var existing=new ResumeRow(5,id,9L,"旧简历","{\"old\":true}","{}",1,"1045",2,3,null,
             java.time.Instant.now(),java.time.Instant.now(),"structured","resumes/"+id+".pdf","旧.pdf","application/pdf",10L,"0".repeat(64),1,null);
         rows.put(id,existing);
         when(repo.findIncludingDeletedForUpdate(9L,id)).thenReturn(Optional.of(existing));
-        when(repo.replaceImported(anyLong(),anyString(),anyString(),anyString(),anyInt(),anyString(),anyString(),anyString(),anyString(),anyLong(),anyString(),anyInt()))
+        when(repo.replaceImported(anyLong(),anyString(),anyString(),anyString(),anyInt(),anyString(),anyString(),anyString(),anyString(),anyLong(),anyString(),anyInt(),anyString()))
             .thenAnswer(a -> {
-                rows.put(id,new ResumeRow(5,id,9L,"旧简历",a.getArgument(2),a.getArgument(3),a.getArgument(4),a.getArgument(5),2,4,null,
+                rows.put(id,new ResumeRow(5,id,9L,a.getArgument(12),a.getArgument(2),a.getArgument(3),a.getArgument(4),a.getArgument(5),2,4,null,
                     java.time.Instant.now(),java.time.Instant.now(),"structured",a.getArgument(6),a.getArgument(7),a.getArgument(8),a.getArgument(9),a.getArgument(10),a.getArgument(11),null));
                 return 1;
             });
@@ -179,9 +179,11 @@ class OriginalResumeServiceTest {
         var resume=service.replaceEditable(9,id,new MockMultipartFile("file","新简历.pdf","application/pdf",bytes),
             path -> new com.resumedo.importing.ImportMapper(new ObjectMapper()).draft("姓名：张三", "新简历.pdf"));
         assertThat(resume.id()).isEqualTo(id);
-        assertThat(resume.title()).isEqualTo("旧简历");
+        assertThat(resume.title()).isEqualTo("新简历");
         assertThat(resume.source().filename()).isEqualTo("新简历.pdf");
         assertThat(resume.source().pages()).isEqualTo(2);
+        assertThat(resume.revision()).isEqualTo(4);
+        assertThat(service.source(9,id,true).filename()).isEqualTo("新简历.pdf");
         assertThat(Files.readAllBytes(root.resolve("resumes/"+id+".pdf"))).isEqualTo(bytes);
         verify(repo,never()).insertImported(anyString(),anyLong(),anyString(),anyString(),anyString(),anyInt(),anyString(),anyString(),anyString(),anyString(),anyLong(),anyString(),anyInt());
     }
@@ -194,7 +196,7 @@ class OriginalResumeServiceTest {
         assertThatThrownBy(() -> service.replaceEditable(9,id,new MockMultipartFile("file","x.pdf","",pdf(1,false)),
             path -> new com.resumedo.importing.ImportMapper(new ObjectMapper()).draft("姓名：张三", "x.pdf")))
             .isInstanceOfSatisfying(ApiException.class,e -> assertThat(e.status().value()).isEqualTo(400));
-        verify(repo,never()).replaceImported(anyLong(),anyString(),anyString(),anyString(),anyInt(),anyString(),anyString(),anyString(),anyString(),anyLong(),anyString(),anyInt());
+        verify(repo,never()).replaceImported(anyLong(),anyString(),anyString(),anyString(),anyInt(),anyString(),anyString(),anyString(),anyString(),anyLong(),anyString(),anyInt(),anyString());
         try(var files=Files.walk(root)) { assertThat(files.filter(Files::isRegularFile).count()).isZero(); }
     }
 

@@ -42,6 +42,7 @@ test('A01 save/reload, A05 cancel/apply, A06 1/3/5-page preview and overflow war
     await page.route('**/api/**', async route => {
       const request = route.request();
       const url = new URL(request.url()).pathname;
+      if (url === '/api/template-favorites') return route.fulfill({ json: [] });
       let body: unknown;
       if (url === '/api/auth/me') body = { id: 1, email: 'test@example.com', displayName: '回归测试' };
       else if (url === '/api/resumes') body = [record];
