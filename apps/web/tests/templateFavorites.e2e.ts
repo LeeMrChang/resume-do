@@ -12,7 +12,7 @@ test('starred templates persist independently of selection and combine with sear
   try {
     const base = 'http://localhost:4198';
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    const dist = fileURLToPath(new URL('../dist/', import.meta.url));
+    const dist = path.resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
     const favorites = new Set<string>();
     let failLoad = true, failChange = false, patches = 0;
     const record = {

@@ -8,7 +8,7 @@ import { createDefaultAppearance, createDefaultDocument } from '@resume-do/schem
 import type { ExportJob, OriginalSource, ResumeResponse } from '../src/api';
 
 const base = 'http://localhost:4198';
-const dist = fileURLToPath(new URL('../dist/', import.meta.url));
+const dist = path.resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const fixture = new URL('./fixtures/original-mixed.pdf', import.meta.url);
 
 async function setup(page: Page, source?: OriginalSource) {
@@ -77,7 +77,7 @@ async function setup(page: Page, source?: OriginalSource) {
   return state;
 }
 
-const openExport = (page: Page) => page.getByRole('button', { name: '下载 PDF', exact: true }).click();
+const openExport = (page: Page) => page.getByRole('button', { name: '↓ 下载 PDF', exact: true }).click();
 const dialog = (page: Page) => page.getByRole('dialog', { name: '导出 PDF', exact: true });
 
 for (const kind of ['pdf', 'docx', 'none'] as const) {
@@ -100,14 +100,15 @@ for (const kind of ['pdf', 'docx', 'none'] as const) {
       await dialog(page).getByRole('button', { name: '下载 PDF', exact: true }).click();
       assert.equal(await dialog(page).getByRole('button', { name: '正在生成…', exact: true }).isDisabled(), true);
       const saved = await download;
-      assert.match(saved.suggestedFilename(), /最新编辑内容/);
+      await saved.path();
+      assert.equal(saved.suggestedFilename(), '导出回归.pdf', 'filename follows the resume title');
       assert.equal(state.requests.length, 1);
       assert.deepEqual(state.snapshots, ['最新编辑内容']);
       assert.equal(state.sourceDownloads, 0);
       await dialog(page).getByText('文件已开始下载', { exact: true }).waitFor();
       const again = page.waitForEvent('download');
       await dialog(page).getByRole('button', { name: '再次下载', exact: true }).click();
-      await again;
+      await (await again).path();
       assert.equal(state.requests.length, 1, 'download again reuses the existing file');
     } finally { await browser.close(); }
   });
@@ -138,7 +139,7 @@ test('save and render failures are recoverable without downloading the original'
     state.downloadFails = false;
     const download = page.waitForEvent('download');
     await dialog(page).getByRole('button', { name: '再次下载', exact: true }).click();
-    await download;
+    await (await download).path();
     assert.equal(state.requests.length, 2);
   } finally { await browser.close(); }
 });
