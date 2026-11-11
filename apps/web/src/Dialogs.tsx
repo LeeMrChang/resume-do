@@ -178,10 +178,63 @@ export function AppearanceDialog({
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('全部');
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
+  const [favoritesLoading, setFavoritesLoading] = useState(true);
+  const [favoriteError, setFavoriteError] = useState('');
+  const [favoritesReload, setFavoritesReload] = useState(0);
+  const [pendingFavorites, setPendingFavorites] = useState<Set<string>>(new Set());
+  const pendingFavoritesRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (kind !== 'template') return;
+    let alive = true;
+    const controller = new AbortController();
+    setFavoritesLoading(true);
+    setFavoriteError('');
+    void api.getTemplateFavorites(controller.signal)
+      .then(ids => {
+        if (!alive) return;
+        setFavorites(new Set(ids));
+        setFavoritesLoaded(true);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setFavoritesLoaded(false);
+        setFavoriteError('收藏加载失败，请重试。');
+      })
+      .finally(() => { if (alive) setFavoritesLoading(false); });
+    return () => { alive = false; controller.abort(); };
+  }, [kind, favoritesReload]);
+
+  async function toggleFavorite(templateId: string) {
+    if (!favoritesLoaded || favoritesLoading || pendingFavoritesRef.current.has(templateId)) return;
+    pendingFavoritesRef.current.add(templateId);
+    setPendingFavorites(new Set(pendingFavoritesRef.current));
+    setFavoriteError('');
+    const removing = favorites.has(templateId);
+    try {
+      if (removing) await api.removeTemplateFavorite(templateId);
+      else await api.addTemplateFavorite(templateId);
+      setFavorites(current => {
+        const next = new Set(current);
+        if (removing) next.delete(templateId); else next.add(templateId);
+        return next;
+      });
+    } catch {
+      setFavoriteError(removing ? '取消收藏失败，请再次点击星标重试。' : '收藏失败，请再次点击星标重试。');
+    } finally {
+      pendingFavoritesRef.current.delete(templateId);
+      setPendingFavorites(new Set(pendingFavoritesRef.current));
+    }
+  }
+
   const thumbnails = useMemo(() => kind === 'template'
     ? new Map(TEMPLATE_CATALOG.map(spec => [spec.id, renderThumbnailFragment(createDefaultAppearance(), spec.id)]))
     : new Map<string, string>(), [kind]);
   const filtered = TEMPLATE_CATALOG.filter(spec =>
+    (!favoritesOnly || favorites.has(spec.id)) &&
     (group === '全部' || spec.group === group) &&
     `${spec.id} ${spec.name} ${spec.group}`.includes(query.trim()),
   );
@@ -318,6 +371,12 @@ export function AppearanceDialog({
       {kind === 'template' && (
         <>
           <div className="template-controls">
+            <div className="template-scope" role="group" aria-label="模板范围">
+              <button type="button" aria-pressed={!favoritesOnly} onClick={() => setFavoritesOnly(false)}>全部模板</button>
+              <button type="button" aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(true)}>
+                我的收藏{favoritesLoaded ? `（${favorites.size}）` : ''}
+              </button>
+            </div>
             <label>搜索模板
               <input type="search" placeholder="输入名称或编号，例如 1045" value={query}
                 onChange={event => setQuery(event.target.value)} />
@@ -328,6 +387,11 @@ export function AppearanceDialog({
                   onClick={() => setGroup(item)}>{item}</button>
               ))}
             </div>
+            {favoritesLoading && <p className="note" role="status">正在加载收藏…</p>}
+            {favoriteError && <div className="template-favorite-error" role="alert">
+              <span>{favoriteError}</span>
+              {!favoritesLoaded && <button type="button" onClick={() => setFavoritesReload(value => value + 1)} disabled={favoritesLoading}>重新加载收藏</button>}
+            </div>}
             <p className="note" role="status">共 {TEMPLATE_CATALOG.length} 套模板，当前显示 {filtered.length} 套。点击卡片选中，点“预览”用当前简历查看整页效果，应用后保存。</p>
           </div>
           <div className="template-grid">
@@ -344,6 +408,17 @@ export function AppearanceDialog({
                   <b>{spec.name} <span className="template-id">{spec.id}</span></b>
                   <small>{spec.group}</small>
                 </button>
+                <button type="button" className="template-favorite-btn"
+                  aria-label={`${favorites.has(spec.id) ? '取消收藏' : '收藏'}模板 ${spec.id} ${spec.name}`}
+                  aria-pressed={favorites.has(spec.id)}
+                  aria-busy={pendingFavorites.has(spec.id)}
+                  title={favorites.has(spec.id) ? '取消收藏' : '收藏模板'}
+                  disabled={!favoritesLoaded || favoritesLoading || pendingFavorites.has(spec.id)}
+                  onClick={() => void toggleFavorite(spec.id)}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill={favorites.has(spec.id) ? 'currentColor' : 'none'}>
+                    <path d="m12 3 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2L12 17.3l-5.7 2.9 1.1-6.2L3 9.6l6.2-.9Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+                  </svg>
+                </button>
                 <button type="button" className="template-preview-btn"
                   aria-label={`预览模板 ${spec.id} ${spec.name}`}
                   onClick={() => setPreviewId(spec.id)}>
@@ -352,7 +427,13 @@ export function AppearanceDialog({
               </div>
             ))}
           </div>
-          {filtered.length === 0 && <p className="note">没有匹配的模板，请换个关键词。</p>}
+          {filtered.length === 0 && !favoritesLoading && favoritesLoaded && (
+            <div className="template-empty">
+              <b>{favoritesOnly && favorites.size === 0 ? '还没有收藏模板' : '没有匹配的模板'}</b>
+              <p>{favoritesOnly && favorites.size === 0 ? '在“全部模板”中点击卡片左上角的星标，喜欢的模板就会出现在这里。' : '试试其他关键词或模板风格。'}</p>
+              {favoritesOnly && <button type="button" onClick={() => { setFavoritesOnly(false); setQuery(''); setGroup('全部'); }}>浏览全部模板</button>}
+            </div>
+          )}
         </>
       )}
 

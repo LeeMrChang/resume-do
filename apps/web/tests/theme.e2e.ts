@@ -58,6 +58,7 @@ test('theme switch defaults to dark, persists per user, follows the system and k
     await page.route('**/api/**', async (route) => {
       const request = route.request();
       const url = new URL(request.url()).pathname;
+      if (url === '/api/template-favorites') return route.fulfill({ json: [] });
       let body: unknown;
       if (url === '/api/auth/me') {
         if (request.method() === 'PATCH') {

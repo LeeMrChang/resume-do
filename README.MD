@@ -39,6 +39,12 @@ flowchart LR
 
 编辑版导出先保存简历，再由 API 固定 revision 快照并创建任务，worker 生成后下载。**编辑器中的“下载 PDF”统一导出当前编辑版，需要 worker。** 原件仍可通过“查看原件”中的下载入口获取，不依赖 worker。
 
+### 模板收藏
+
+“更换模板”中，每张卡片左上角的星标可收藏或取消收藏。点击星标不会选中或应用模板；收藏立即按登录账号保存，取消弹窗不会撤销。下次登录、刷新或换设备后，在“我的收藏”中可快速查找和套用，搜索及风格筛选可同时使用。首次没有收藏时显示引导；加载或保存失败会提示重试，不会把失败操作显示为已收藏。
+
+首次运行新版 Java API 时，Flyway 会执行 `V7__template_favorites.sql` 新建收藏表。收藏只记录用户与模板编号，不记录简历内容。接口为 `GET /api/template-favorites`、`PUT /api/template-favorites/{templateId}` 与 `DELETE /api/template-favorites/{templateId}`，均要求登录。
+
 ## 2. 目录结构
 
 ```text

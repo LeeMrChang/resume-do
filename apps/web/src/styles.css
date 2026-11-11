@@ -3042,3 +3042,71 @@ button.danger-text:hover:not(:disabled) {
     display: none;
   }
 }
+
+/* Account-level template favorites; these controls do not select the template. */
+.template-scope {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.template-scope button[aria-pressed='true'] {
+  color: var(--brand);
+  background: var(--success-subtle);
+  border-color: var(--brand);
+}
+
+.template-favorite-btn {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg-muted);
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.template-favorite-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.template-favorite-btn[aria-pressed='true'] {
+  color: var(--warning);
+  border-color: var(--warning-border);
+  background: var(--warning-subtle);
+}
+
+.template-favorite-btn:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.template-favorite-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--danger);
+  font-size: 12px;
+  padding: 10px 0;
+}
+
+.template-empty {
+  padding: 36px 16px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+.template-empty p {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
