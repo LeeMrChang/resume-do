@@ -984,17 +984,15 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
           {openingEditor ? '正在打开…' : activeResume ? '返回编辑器' : '新建可编辑简历'}
         </button>
         {activeResume && <>
-          <button className="primary" onClick={() => {
-            if(activeResume.kind === 'original') void api.downloadSource(activeResume.id, activeResume.source?.filename ?? `${title}.pdf`).catch(e => setActionError(e.message));
-            else setDialog({kind:'export'});
-          }}>下载 PDF</button>
+          <button type="button" className="primary" onClick={() => {
+            void api.downloadSource(activeResume.id, activeResume.source?.filename ?? `${title}.pdf`).catch(e => setActionError(e.message));
+          }}>下载原件</button>
           <button type="button" disabled={deleting} onClick={() => void deleteCurrent()}>删除简历</button>
         </>}
         <ThemeToggle />
         <button onClick={() => void logout()}>退出</button>
         {actionError && <span role="alert">{actionError}</span>}
       </header>
-      {dialog?.kind === 'export' && activeResume && <ExportDialog resumeId={activeResume.id} source={activeResume.source} defaultFilename={defaultFilename} pageCount={pageCount} ensureSaved={ensureSaved} onClose={() => setDialog(null)} />}
       {activeResume ? <OriginalResumeView key={activeResume.id} resume={activeResume} /> : <main className="original-empty">
         <h1>还没有简历</h1><p>点击“导入简历”上传 PDF / DOCX，解析后直接进入编辑器，并保留原件。</p>
         <button onClick={() => { void api.createResume({ title: '我的简历', document: createDefaultDocument(), appearance: createDefaultAppearance() }).then(originalCreated).catch(e => setActionError(e.message)); }}>创建可编辑简历</button>
@@ -1595,7 +1593,6 @@ export default function EditorPage({ user, resumeId, onBack, onLogout }: {
       {dialog?.kind === 'export' && resumeIdRef.current && (
         <ExportDialog
           resumeId={resumeIdRef.current}
-          source={activeResume.source}
           defaultFilename={defaultFilename}
           pageCount={pageCount}
           ensureSaved={ensureSaved}

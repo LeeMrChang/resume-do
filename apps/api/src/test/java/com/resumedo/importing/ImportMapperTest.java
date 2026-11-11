@@ -6,6 +6,17 @@ import com.resumedo.resume.ResumeValidator;
 import org.junit.jupiter.api.Test;
 
 class ImportMapperTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        "lichanghao_prod.pdf,lichanghao_prod",
+        "简历终版.DOCX,简历终版",
+        "resume.v2.PDF,resume.v2"
+    })
+    void importedTitleUsesTheFilenameWithoutItsFinalExtension(String filename,String expected) {
+        var draft=new ImportMapper(new ObjectMapper()).draft("姓名：张三",filename);
+        assertThat(draft.path("title").asText()).isEqualTo(expected);
+    }
+
     private final ImportMapper mapper = new ImportMapper(new ObjectMapper());
 
     /** Sections are looked up by id so the canonical order can change without rewriting assertions. */

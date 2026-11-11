@@ -850,6 +850,8 @@ paths:
       operationId: createExport
       description: |
         固定当前 revision 的文档快照并创建异步导出任务，由 PDF worker 生成文件。
+        编辑器“下载 PDF”仅使用本接口导出当前编辑版；客户端先保存最新修改，再传入保存成功的 revision。
+        原件下载继续使用独立的 source 接口，不作为编辑器导出弹窗的版本选项。
 
         - `revision` 必须等于当前简历 revision，否则 409 `REVISION_CONFLICT`。
         - 原件简历（`kind=original`）不能走编辑版导出，返回 409 `ORIGINAL_RESUME_SOURCE_DOWNLOAD`。
@@ -1404,6 +1406,7 @@ paths:
 
         - 目标简历必须是 `structured`；`original` 返回 400（只能先转可编辑或新建）。
         - 同一 ID、`revision + 1`；不新增简历、不占用名额。
+        - 简历名称自动使用新上传文件名，去掉末尾 PDF / DOCX 扩展名并限制为 100 字；名称与内容一同保存，导入失败时不更名。
         - 旧原件在事务提交后清理；新原件立即可通过 `/api/resumes/{id}/source` 读取。
         - 文件格式、大小与安全限制同 `POST /api/imports/direct`；解析繁忙返回 429 `IMPORT_BUSY`。
         - 超过 20 MiB 的请求返回 413 `FILE_TOO_LARGE`（此路径不在 400 特殊处理名单内）。

@@ -1632,6 +1632,132 @@ input[readonly] {
   white-space: nowrap;
 }
 
+.export-content {
+  padding-top: 4px;
+}
+
+.export-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border-muted);
+  border-radius: 12px;
+  background: var(--canvas-subtle);
+}
+
+.export-file-icon {
+  flex: 0 0 48px;
+  color: var(--brand);
+  text-align: center;
+}
+
+.export-file-icon svg {
+  display: block;
+  width: 32px;
+  height: 36px;
+  margin: 0 auto 4px;
+}
+
+.export-file-icon span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.export-file-info {
+  min-width: 0;
+}
+
+.export-edition {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.export-filename {
+  margin: 6px 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.export-caption,
+.export-hint,
+.export-status p {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.export-caption {
+  margin: 0;
+}
+
+.export-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.export-details dt {
+  color: var(--fg-muted);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.export-details dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.export-details dd span {
+  display: block;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.export-hint {
+  margin: 0;
+}
+
+.export-status {
+  font-size: 13px;
+}
+
+.export-status p {
+  margin: 8px 0 0;
+}
+
+.export-status .progress {
+  margin: 12px 0;
+}
+
+.export-content footer {
+  padding-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .export-summary {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .export-file-icon {
+    flex-basis: 34px;
+  }
+
+  .export-content footer button {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
 .error {
   color: var(--danger);
   background: var(--danger-subtle);
