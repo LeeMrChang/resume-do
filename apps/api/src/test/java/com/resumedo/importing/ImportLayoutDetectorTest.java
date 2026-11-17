@@ -30,30 +30,30 @@ class ImportLayoutDetectorTest {
 
     @Test void recognisesCentredHeaderLines() {
         assertThat(ImportLayoutDetector.centered(List.of(
-                new ImportLayoutDetector.Line("李昌浩", 274f, 339.6f),
+                new ImportLayoutDetector.Line("测试甲", 274f, 339.6f),
                 new ImportLayoutDetector.Line("深圳 · 面议 · 随时到岗 · 资深Java工程师/技术负责人", 186.4f, 426.7f),
-                new ImportLayoutDetector.Line("男 · 7年经验 · 13695138043 · 840591418@qq.com", 182.9f, 430.4f)
+                new ImportLayoutDetector.Line("男 · 7年经验 · 13800000000 · person01@example.invalid", 182.9f, 430.4f)
         ), 595f)).isTrue();
     }
 
     @Test void rejectsLeftAlignedHeaderLines() {
         assertThat(ImportLayoutDetector.centered(List.of(
-                new ImportLayoutDetector.Line("李昌浩", 24f, 89.6f),
+                new ImportLayoutDetector.Line("测试甲", 24f, 89.6f),
                 new ImportLayoutDetector.Line("深圳 · 面议 · 随时到岗 · 资深Java工程师/技术负责人", 24f, 264.3f),
-                new ImportLayoutDetector.Line("男 · 7年经验 · 13695138043 · 840591418@qq.com", 24f, 271.4f)
+                new ImportLayoutDetector.Line("男 · 7年经验 · 13800000000 · person01@example.invalid", 24f, 271.4f)
         ), 595f)).isFalse();
     }
 
     @Test void rejectsEqualWidthLeftAlignedLines() {
         assertThat(ImportLayoutDetector.centered(List.of(
-                new ImportLayoutDetector.Line("李昌浩", 24f, 60f),
+                new ImportLayoutDetector.Line("测试甲", 24f, 60f),
                 new ImportLayoutDetector.Line("Java 工程师", 24f, 60f)
         ), 595f)).isFalse();
     }
 
     @Test void treatsASingleHeaderLineAsNoEvidence() {
         assertThat(ImportLayoutDetector.centered(List.of(
-                new ImportLayoutDetector.Line("李昌浩", 274f, 339.6f)
+                new ImportLayoutDetector.Line("测试甲", 274f, 339.6f)
         ), 595f)).isFalse();
     }
 

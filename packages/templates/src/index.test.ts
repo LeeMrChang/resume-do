@@ -92,12 +92,12 @@ test('classic header follows a saved field order and keeps its default grid othe
 
 test('imported template follows a centred, label-free source header', () => {
   const document = structuredClone(SAMPLE_DOCUMENT);
-  document.basic.name = '李昌浩';
+  document.basic.name = '测试甲';
   document.basic.gender = '男';
   document.basic.city = '';
   document.basic.experienceYears = '7年经验';
-  document.basic.phone = '13695138043';
-  document.basic.email = '840591418@qq.com';
+  document.basic.phone = '13800000000';
+  document.basic.email = 'person01@example.invalid';
   document.basic.showPhoto = false;
   document.intent = {
     role: '资深Java工程师/技术负责人',
@@ -117,12 +117,12 @@ test('imported template follows a centred, label-free source header', () => {
   assert.ok(!header.html.includes('data-icon'));
   assert.ok(header.html.includes('深圳 · 面议 · 随时到岗 · 资深Java工程师/技术负责人'));
   assert.ok(!header.html.includes('求职意向'));
-  assert.ok(header.html.includes('男 · 7年经验 · 13695138043 · 840591418@qq.com'));
+  assert.ok(header.html.includes('男 · 7年经验 · 13800000000 · person01@example.invalid'));
 });
 
 test('imported labelled headers keep their cells and print no invented icons or avatar', () => {
   const document = structuredClone(SAMPLE_DOCUMENT);
-  document.basic.phone = '13695138043';
+  document.basic.phone = '13800000000';
   document.basic.birthMonth = '1993-04';
   document.importStyle = { headerAlign: 'left', metaStyle: 'labelled' };
   const appearance = { ...SAMPLE_APPEARANCE, templateId: 'imported' as const };
@@ -420,8 +420,8 @@ test('imported template mirrors source layout: labelled meta grid, inline record
   document.basic.gender = '男';
   document.basic.nativePlace = '广东揭阳';
   document.basic.experienceYears = '7年经验';
-  document.basic.phone = '13695138043';
-  document.basic.email = '840591418@qq.com';
+  document.basic.phone = '13800000000';
+  document.basic.email = 'person01@example.invalid';
   document.basic.showPhoto = false;
   const work = document.sections.find(section => section.id === 'work')!;
   work.items = [

@@ -5,12 +5,36 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 SERVICES = ('api', 'worker', 'web')
 
 
+def requires_deployment(path):
+    """Classify this event independently of accumulated, not-yet-released changes."""
+    if path.startswith(('docs/', '.idea/', '.qoder/', '.run/', 'scripts/tests/')):
+        return False
+    if path.lower() in ('readme.md', 'agents.md', '.gitignore'):
+        return False
+    # These files change CI planning/checks, not the running application.
+    if path in ('scripts/plan-release.py', '.github/workflows/ci-cd.yml'):
+        return False
+    if path.startswith('apps/api/src/test/'):
+        return False
+    if path.startswith(('apps/', 'packages/')):
+        parts = Path(path).parts
+        if any(part in ('test', 'tests', '__tests__') for part in parts[:-1]):
+            return False
+        if re.search(r'\.(?:test|spec)\.(?:[cm]?[jt]s|[jt]sx)$', parts[-1]):
+            return False
+    # Runtime code, dependencies, deployment inputs and unknown paths stay conservative.
+    return True
+
+
 def affected(path):
+    # Also used for persisted production fingerprints. Keep its existing semantics:
+    # excluding tests here would invalidate older deployed baseline fingerprints.
     if path.startswith('packages/schema/'):
         return set(SERVICES)
     if path in ('apps/web/package.json', 'apps/pdf-worker/package.json'):
@@ -53,12 +77,19 @@ def fingerprints(files):
     return {s: h.hexdigest() for s, h in hashes.items()}
 
 
-def plan(base, head, full=False):
+def plan(base, head, full=False, event_base=None):
     old, new = (tree(base) if base else {}), tree(head)
     changed = {p for p in old.keys() | new.keys() if old.get(p) != new.get(p)}
     migrations = any(p.startswith('apps/api/src/main/resources/db/migration/') for p in changed)
     selected = set(SERVICES) if full or not base or migrations else set().union(*(affected(p) for p in changed))
+    # A docs/test-only push must not retry a previous failed production release.
+    # Missing event history fails closed; full=True remains an explicit manual override.
+    event_base = base if event_base is None else event_base
+    event_old = (old if event_base == base else tree(event_base)) if event_base else {}
+    event_changed = {p for p in event_old.keys() | new.keys() if event_old.get(p) != new.get(p)}
+    deployment_required = full or bool(event_base) and any(requires_deployment(p) for p in event_changed)
     return {'services': [s for s in SERVICES if s in selected], 'migrations': migrations or not base,
+            'deployment_required': deployment_required,
             'docker_validation': full or not base or bool(changed & {
                 'deploy/web.Dockerfile', 'deploy/worker.Dockerfile', 'scripts/docker-dependencies.mjs',
                 'scripts/package-release.py', '.dockerignore',
@@ -70,10 +101,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--base', default='')
     parser.add_argument('--head', default='HEAD')
+    parser.add_argument('--event-base', default=None,
+                        help='Push before SHA or PR merge-base; empty means check-only unless --full')
     parser.add_argument('--full', action='store_true')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    result = plan(args.base, args.head, args.full)
+    result = plan(args.base, args.head, args.full, args.event_base)
     args.output.write_text(json.dumps(result, indent=2) + '\n')
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
@@ -81,6 +114,7 @@ if __name__ == '__main__':
                 print(f'{service}={str(service in result["services"]).lower()}', file=out)
             print('services=' + json.dumps(result['services']), file=out)
             print(f'any={str(bool(result["services"])).lower()}', file=out)
+            print(f'deployment_required={str(result["deployment_required"]).lower()}', file=out)
             print(f'integration={str(bool(set(result["services"]) & {"api", "worker"})).lower()}', file=out)
             print(f'docker_validation={str(result["docker_validation"]).lower()}', file=out)
     print(json.dumps(result, indent=2))

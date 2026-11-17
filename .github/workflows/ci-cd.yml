@@ -22,7 +22,9 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       base: ${{ steps.base.outputs.sha }}
+      event_base: ${{ steps.base.outputs.event_base }}
       any: ${{ steps.plan.outputs.any }}
+      deployment_required: ${{ steps.plan.outputs.deployment_required }}
       services: ${{ steps.plan.outputs.services }}
       integration: ${{ steps.plan.outputs.integration }}
       docker_validation: ${{ steps.plan.outputs.docker_validation }}
@@ -35,6 +37,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           if [[ "$EVENT" == pull_request ]]; then
@@ -50,15 +53,27 @@ jobs:
             done <<< "$runs"
           fi
           if [[ -n "$base" ]] && ! git merge-base --is-ancestor "$base" HEAD; then base=''; fi
+          event_base=''
+          if [[ "$EVENT" == push ]]; then
+            # Use this push's actual diff for deployment eligibility, even when an
+            # older failed release remains in the accumulated service-check scope.
+            if [[ "${PUSH_BEFORE:-}" =~ ^[a-f0-9]{40}$ && "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]] && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+              event_base=$PUSH_BEFORE
+            fi
+          else
+            event_base=$base
+          fi
           echo "sha=$base" >> "$GITHUB_OUTPUT"
+          echo "event_base=$event_base" >> "$GITHUB_OUTPUT"
       - id: plan
         env:
           BASE: ${{ steps.base.outputs.sha }}
+          EVENT_BASE: ${{ steps.base.outputs.event_base }}
           FULL: ${{ inputs.full || false }}
         run: |
           args=()
           if [[ "$FULL" == true ]]; then args+=(--full); fi
-          python3 scripts/plan-release.py --base "$BASE" "${args[@]}" --output "$RUNNER_TEMP/plan.json"
+          python3 scripts/plan-release.py --base "$BASE" --event-base "$EVENT_BASE" "${args[@]}" --output "$RUNNER_TEMP/plan.json"
 
   safety:
     name: Deployment safety
@@ -241,7 +256,7 @@ jobs:
   deploy:
     name: Build release images and deploy
     needs: [plan, checks]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' && needs.plan.outputs.any == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' && needs.plan.outputs.any == 'true' && needs.plan.outputs.deployment_required == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     concurrency:
@@ -270,11 +285,12 @@ jobs:
       - name: Recreate the checked release plan
         env:
           BASE: ${{ needs.plan.outputs.base }}
+          EVENT_BASE: ${{ needs.plan.outputs.event_base }}
           FULL: ${{ inputs.full || false }}
         run: |
           args=()
           if [[ "$FULL" == true ]]; then args+=(--full); fi
-          python3 scripts/plan-release.py --base "$BASE" "${args[@]}" --output "$RUNNER_TEMP/plan.json"
+          python3 scripts/plan-release.py --base "$BASE" --event-base "$EVENT_BASE" "${args[@]}" --output "$RUNNER_TEMP/plan.json"
       - name: Package source for domestic server build and registry publication
         if: steps.current.outputs.deploy == 'true'
         run: |

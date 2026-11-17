@@ -80,25 +80,25 @@ class ImportMapperTest {
         assertThat(draft.toString()).contains("未识别信息", "原正文");
     }
     @Test void mapsIdeographicSpacedLabelsAndKeepsParsedHeaderOutOfPendingContent() {
-        String source = "李 昌 浩\n"
+        String source = "测 试 甲\n"
                 + "求职意向：Java工程师    深圳    随时到岗\n"
                 + "\uf073年\u3000\u3000龄： 31岁    \u2588性\u3000\u3000别： 男\n"
                 + "\uf041籍\u3000\u3000贯： 广东揭阳    \ue001工作年限： 7年经验\n"
-                + "\ufffd电\u3000\u3000话： 13695138043    \uf0e0邮\u3000\u3000箱： 840591418@qq.com\n"
+                + "\ufffd电\u3000\u3000话： 13800000000    \uf0e0邮\u3000\u3000箱： person01@example.invalid\n"
                 + "教育背景\n2014-09 ~ 2018-06    广东海洋大学    电子信息工程（本科）\n"
                 + "技能特长\n·  Java基础扎实，深入理解集合框架。\n"
                 + "项目经验\n2024-03 ~ 2026-03    某平台    Java开发\n平台描述。\n"
                 + "自我评价\n认真负责";
-        var draft = mapper.draft(source, "2026-李昌浩.pdf", "#67a886");
+        var draft = mapper.draft(source, "2026-测试甲.pdf", "#67a886");
         var doc = draft.path("document");
         var basic = doc.path("basic");
-        assertThat(basic.path("name").asText()).isEqualTo("李昌浩");
+        assertThat(basic.path("name").asText()).isEqualTo("测试甲");
         assertThat(basic.path("age").asText()).isEqualTo("31岁");
         assertThat(basic.path("gender").asText()).isEqualTo("男");
         assertThat(basic.path("nativePlace").asText()).isEqualTo("广东揭阳");
         assertThat(basic.path("experienceYears").asText()).isEqualTo("7年经验");
-        assertThat(basic.path("phone").asText()).isEqualTo("13695138043");
-        assertThat(basic.path("email").asText()).isEqualTo("840591418@qq.com");
+        assertThat(basic.path("phone").asText()).isEqualTo("13800000000");
+        assertThat(basic.path("email").asText()).isEqualTo("person01@example.invalid");
         assertThat(basic.path("customFields")).isEmpty();
         assertThat(doc.path("intent").path("role").asText()).isEqualTo("Java工程师");
         var sections = doc.path("sections");
@@ -171,9 +171,9 @@ class ImportMapperTest {
     }
 
     @Test void cleansIconFontArtifactsAndMapsSpacedTwoColumnLabelsWithoutDroppingUnknownFields() {
-        var draft = mapper.draft("李 昌 浩\n\uf073年 龄：31岁 \u2588性 别：男\n\uf041籍 贯：广东揭阳 \ue001工作年限：7年经验\n\ufffd电 话：13800000000 \uf0e0邮 箱：test@example.com", "icons.pdf");
+        var draft = mapper.draft("测 试 甲\n\uf073年 龄：31岁 \u2588性 别：男\n\uf041籍 贯：广东揭阳 \ue001工作年限：7年经验\n\ufffd电 话：13800000000 \uf0e0邮 箱：test@example.com", "icons.pdf");
         var basic = draft.path("document").path("basic");
-        assertThat(basic.path("name").asText()).isEqualTo("李昌浩");
+        assertThat(basic.path("name").asText()).isEqualTo("测试甲");
         assertThat(basic.path("gender").asText()).isEqualTo("男");
         assertThat(basic.path("experienceYears").asText()).isEqualTo("7年经验");
         assertThat(basic.path("phone").asText()).isEqualTo("13800000000");
@@ -198,9 +198,9 @@ class ImportMapperTest {
     }
 
     @Test void importsUnlabelledHeaderAndSummaryInSourceOrderWithoutPending() {
-        String source = "李昌浩\n"
+        String source = "测试甲\n"
                 + "深圳  面议  随时到岗  资深Java工程师/技术负责人\n"
-                + "男    7年经验    13695138043    840591418@qq.com\n"
+                + "男    7年经验    13800000000    person01@example.invalid\n"
                 + "个人概述\n"
                 + "•  7 年 Java 后端开发经验，涉及商户运营、医药冷链物流及制造业管理系统。\n"
                 + "专业技能\n"
@@ -212,15 +212,15 @@ class ImportMapperTest {
                 + "2014-09 ~ 2018-06    广东海洋大学    电子信息工程（本科）\n"
                 + "自我评价\n"
                 + "认真负责";
-        var draft = mapper.draft(source, "lichanghao_resume.pdf");
+        var draft = mapper.draft(source, "test-person01-resume.pdf");
         var doc = draft.path("document");
         var basic = doc.path("basic");
-        assertThat(basic.path("name").asText()).isEqualTo("李昌浩");
+        assertThat(basic.path("name").asText()).isEqualTo("测试甲");
         assertThat(basic.path("gender").asText()).isEqualTo("男");
         assertThat(basic.path("experienceYears").asText()).isEqualTo("7年经验");
         assertThat(basic.path("city").asText()).isEmpty();
-        assertThat(basic.path("phone").asText()).isEqualTo("13695138043");
-        assertThat(basic.path("email").asText()).isEqualTo("840591418@qq.com");
+        assertThat(basic.path("phone").asText()).isEqualTo("13800000000");
+        assertThat(basic.path("email").asText()).isEqualTo("person01@example.invalid");
         assertThat(doc.path("intent").path("city").asText()).isEqualTo("深圳");
         assertThat(doc.path("intent").path("salary").asText()).isEqualTo("面议");
         assertThat(doc.path("intent").path("arrival").asText()).isEqualTo("随时到岗");
@@ -237,10 +237,10 @@ class ImportMapperTest {
     }
 
     @Test void splitsTwoColumnHeaderRowsOnUnknownLabelsAndKeepsProfessionalSkills() {
-        String source = "李 烨 墅\n"
+        String source = "测 试 乙\n"
                 + "出生年月： 1993-04  性　　别： 男\n"
-                + "工作年限： 8年经验  电　　话： 18023212239\n"
-                + "邮　　箱： 742968670@qq.com  学　　历： 本科\n"
+                + "工作年限： 8年经验  电　　话： 13900000000\n"
+                + "邮　　箱： person02@example.invalid  学　　历： 本科\n"
                 + "现　　居： 深圳  求职意向： 资深Java工程师/技术负责人\n"
                 + "专业技术\n"
                 + "• 精通Java与数据结构\n"
@@ -249,15 +249,15 @@ class ImportMapperTest {
                 + "工作经历\n"
                 + "2024-02 ~ 至今    深圳东郊在线科技有限公司    高级Java工程师\n"
                 + "负责平台";
-        var draft = mapper.draft(source, "李烨墅的简历.pdf");
+        var draft = mapper.draft(source, "测试乙的简历.pdf");
         var doc = draft.path("document");
         var basic = doc.path("basic");
-        assertThat(basic.path("name").asText()).isEqualTo("李烨墅");
+        assertThat(basic.path("name").asText()).isEqualTo("测试乙");
         assertThat(basic.path("birthMonth").asText()).isEqualTo("1993-04");
         assertThat(basic.path("gender").asText()).isEqualTo("男");
         assertThat(basic.path("experienceYears").asText()).isEqualTo("8年经验");
-        assertThat(basic.path("phone").asText()).isEqualTo("18023212239");
-        assertThat(basic.path("email").asText()).isEqualTo("742968670@qq.com");
+        assertThat(basic.path("phone").asText()).isEqualTo("13900000000");
+        assertThat(basic.path("email").asText()).isEqualTo("person02@example.invalid");
         assertThat(basic.path("customFields").toString()).contains("\"学历\"", "\"本科\"", "\"现居\"", "\"深圳\"");
         assertThat(doc.path("intent").path("role").asText()).isEqualTo("资深Java工程师/技术负责人");
         assertThat(section(doc, "skills").path("title").asText()).isEqualTo("专业技术");
@@ -277,7 +277,7 @@ class ImportMapperTest {
     }
 
     @Test void dropsPageNumbersInsteadOfTreatingThemAsResumeContent() {
-        String source = "李昌浩\n13800000000\n个人概述\n第一段\n1 / 3\n专业技能\nJava / JVM\n2 / 3\n自我评价\n认真负责\n3 / 3";
+        String source = "测试甲\n13800000000\n个人概述\n第一段\n1 / 3\n专业技能\nJava / JVM\n2 / 3\n自我评价\n认真负责\n3 / 3";
         var doc = mapper.draft(source, "x.pdf").path("document");
         assertThat(doc.toString()).doesNotContain("1 / 3", "2 / 3", "3 / 3");
         assertThat(section(doc, "summary").path("items").get(0).path("body").asText()).contains("第一段");

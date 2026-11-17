@@ -1,5 +1,7 @@
 # 导入原样式还原验证记录（2026-10-29）
 
+> 公开版本脱敏说明（2026-11-17）：样例中的姓名、手机号、邮箱及对应文件名已替换为虚构测试数据；以下仍为历史验证记录，不表示使用替换后的样例重新执行了当时的验证。
+
 > 用户诉求：「导入简历后，会按照原本的样式完全放在编辑页上」。设计见[导入原样式还原设计](../../superpowers/specs/2026-10-29-import-style-fidelity-design.md)，计划见[实施计划](../../superpowers/plans/2026-10-29-import-style-fidelity.md)。
 > 本轮为手工执行（当前环境未加载 Superpowers 技能包），未声称走完技能流程。
 
@@ -7,7 +9,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 样例 | `/Users/silent/Downloads/2026-李昌浩.pdf`，153315 字节，3 页，主题色 `#67a886` |
+| 样例 | `/Users/silent/Downloads/2026-测试甲.pdf`，153315 字节，3 页，主题色 `#67a886` |
 | API | 本次新构建的 `resume-api-0.1.0.jar`，端口 8081，`--spring.profiles.active=local`，本地 MySQL `resume_do` |
 | Web | Vite 5174（代理 8081），未使用用户正在运行的 8080 / 5173 |
 | 账号 | 测试账号 `fidelity-20261029@example.invalid`（owner_id=6），未触碰 owner_id=2 的真实数据 |
@@ -28,7 +30,7 @@
 
 ### 3.1 导入结果
 
-- 字段：`李昌浩 / 31岁 / 13695138043 / 840591418@qq.com`；分区 `教育背景 1、工作经验 4、技能特长 1、项目经验 4、自我评价 1、待整理内容 0`。
+- 字段：`测试甲 / 31岁 / 13800000000 / person01@example.invalid`；分区 `教育背景 1、工作经验 4、技能特长 1、项目经验 4、自我评价 1、待整理内容 0`。
 - 版式持久化：`{templateId: imported, fontId: sans, fontSize: 14, lineHeight: 2.0, sectionGap: 20, pageMargin: 32, themeColor: #67a886}`。
 - 原件：`GET /api/resumes/762f6e3568684c83ac99ff4e4e6b9607/source` 的 SHA-256 为 `1f353d6d…e2546`，与上传文件一致。
 
@@ -95,7 +97,7 @@ java -jar apps/api/target/resume-api-0.1.0.jar --server.port=8081 --spring.profi
 # Web
 RESUME_DO_API_PORT=8081 RESUME_DO_WEB_PORT=5174 npm run dev:web
 # 导入
-curl -b cookies -F file=@2026-李昌浩.pdf http://localhost:8081/api/imports/direct
+curl -b cookies -F file=@2026-测试甲.pdf http://localhost:8081/api/imports/direct
 # 导出（绕过队列，直接渲染当前模板）
 RESUME_DO_BROWSER_CHANNEL=chrome node --import tsx /tmp/rd-export.mjs
 ```
