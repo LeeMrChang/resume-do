@@ -28,7 +28,7 @@ sudo docker compose -p xiachen-public -f /home/ubuntu/xiachen-public/releases/�
 ## 验证记录
 
 2026-10-31，网关首次成功任务：
-https://github.com/LeeMrChang/resume-do/actions/runs/41160123014
+https://github.com/leech-io/resume-do/actions/runs/41160123014
 
 - 服务器本机以正确域名和公信 TLS 校验访问四个站点，均返回 HTTPS 200。
 - GitHub runner 从公网验证四个域名、HTTP 308 跳转、两个应用健康接口及未登录数据接口返回 401。

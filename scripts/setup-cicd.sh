@@ -5,7 +5,7 @@ umask 077
 host=${1:-175.178.194.116}
 user=${2:-ubuntu}
 port=${3:-22}
-repo=LeeMrChang/resume-do
+repo=leech-io/resume-do
 root=/home/ubuntu/resume-do
 [[ "$host" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || exit 1
 [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 1
@@ -35,4 +35,4 @@ gh secret set RESUME_DO_DEPLOY_PORT --repo "$repo" --body "$port"
 gh secret set RESUME_DO_DEPLOY_KNOWN_HOSTS --repo "$repo" < "$scratch/known_hosts"
 gh secret set RESUME_DO_DEPLOY_SSH_KEY --repo "$repo" < "$scratch/key"
 echo 'Resume Do SSH and GitHub Secrets configured. Existing cost credentials were not reused.'
-echo 'After pushing this workflow to main: gh workflow run ci-cd.yml --repo LeeMrChang/resume-do --ref main'
+echo 'After pushing this workflow to main: gh workflow run ci-cd.yml --repo leech-io/resume-do --ref main'

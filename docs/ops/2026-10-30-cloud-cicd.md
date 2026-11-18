@@ -2,7 +2,7 @@
 
 ## 1. 部署边界
 
-目标仓库 `LeeMrChang/resume-do`，Ubuntu 服务器 `175.178.194.116`，部署目录 `/home/ubuntu/resume-do`。cost 保留原有容器、端口、域名和数据。
+目标仓库 `leech-io/resume-do`，Ubuntu 服务器 `175.178.194.116`，部署目录 `/home/ubuntu/resume-do`。cost 保留原有容器、端口、域名和数据。
 
 | 项目 | 配置 |
 | --- | --- |
@@ -43,8 +43,8 @@ bash scripts/setup-cicd.sh
 
 ```bash
 # Mac 普通终端；工作流已推送到 main，Secrets 已设置
-gh workflow run ci-cd.yml --repo LeeMrChang/resume-do --ref main
-gh run list --repo LeeMrChang/resume-do --workflow ci-cd.yml --limit 5
+gh workflow run ci-cd.yml --repo leech-io/resume-do --ref main
+gh run list --repo leech-io/resume-do --workflow ci-cd.yml --limit 5
 ```
 
 预期：先检查，后出现 `Build release images and deploy`。部署串行，排队中过时的 main 提交在构建前跳过，不取消已经进入发布的任务。
