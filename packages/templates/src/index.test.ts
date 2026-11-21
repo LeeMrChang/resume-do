@@ -460,10 +460,10 @@ test('imported template mirrors source layout: labelled meta grid, inline record
   assert.equal(getPageMetrics(appearance).footerReservePx, 0);
 });
 
-test('catalog covers all 259 reference IDs plus the imported template, and legacy IDs resolve', () => {
-  assert.equal(TEMPLATE_IDS.length, 259);
-  assert.equal(TEMPLATE_CATALOG.length, 260);
-  assert.equal(new Set(TEMPLATE_CATALOG.map(spec => spec.id)).size, 260);
+test('catalog covers all 260 reference IDs plus the imported template, and legacy IDs resolve', () => {
+  assert.equal(TEMPLATE_IDS.length, 260);
+  assert.equal(TEMPLATE_CATALOG.length, 261);
+  assert.equal(new Set(TEMPLATE_CATALOG.map(spec => spec.id)).size, 261);
   assert.deepEqual(
     [...TEMPLATE_CATALOG.map(spec => spec.id)].sort(),
     [...TEMPLATE_IDS, 'imported'].sort(),
@@ -538,4 +538,32 @@ test('section title tint is opt-in per page', () => {
   assert.ok(tinted.includes(' title-tint'));
   assert.ok(tinted.includes('--r-title-tint:#e5f1e5'));
   assert.ok(RESUME_CSS.includes('background: var(--r-title-tint)'));
+});
+
+test('gray technical reference has a labelled personal grid and inline experience without a photo or footer', () => {
+  const document = structuredClone(SAMPLE_DOCUMENT);
+  document.basic.fieldOrder = ['gender', 'birthMonth', 'phone'];
+  document.basic.birthMonth = '1995-03';
+  document.basic.customFields = [{ label: 'GitHub', value: 'github.com/example' }];
+  const spec = TEMPLATE_CATALOG.find(item => item.id === '2170');
+  assert.ok(spec, 'gray technical template must be selectable');
+  const appearance = { ...SAMPLE_APPEARANCE, templateId: spec.id };
+  const input = { document, appearance };
+  const blocks = buildBlocks(input);
+  const header = blocks[0];
+  assert.match(header.html, /r-personal-title[^>]*>个人信息/);
+  assert.match(header.html, /<em>姓名<\/em>/);
+  assert.match(header.html, /<em>GitHub<\/em>/);
+  assert.ok(header.html.indexOf('性别') < header.html.indexOf('出生年月'));
+  assert.ok(header.html.indexOf('出生年月') < header.html.indexOf('电话'));
+  assert.ok(!header.html.includes('<svg'));
+  assert.ok(!header.html.includes('r-intro-photo'));
+  assert.ok(!header.html.includes('求职意向'));
+  assert.match(header.html, /r-intent/);
+  const workHead = blocks.find(item => item.kind === 'record-head' && item.sectionId === 'work');
+  assert.ok(workHead);
+  assert.match(workHead.html, /r-record-combo/);
+  assert.ok(!blocks.some(item => item.kind === 'role'));
+  assert.equal(getPageMetrics(appearance).footerReservePx, 0);
+  assert.ok(!renderPagesFragment(input, [blocks]).includes('r-footer'));
 });

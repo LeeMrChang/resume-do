@@ -46,6 +46,12 @@ test('v2.2 import overwrites the current resume, exports the edited version and 
    if(url.pathname==='/api/imports/direct/original-test') {
     assert.equal(method,'POST'); imports++;
     const document=createDefaultDocument(); document.basic.name='覆盖测试';
+    const pending=document.sections.find(section=>section.id==='custom')!;
+    pending.visible=true;
+    pending.items[0].body='<p>个人项目</p><p>开源项目说明第一行</p><p>第二行独立保留</p>';
+    const practice=document.sections.find(section=>section.id==='technical-practice')!;
+    practice.visible=true;
+    practice.items[0].body='<p>部署与排障实践。</p>';
     document.importStyle={fontSizePx:14.52};
     record={...record,title:"lichanghao_prod",revision:(record.revision as number)+1,document,
       appearance:{...createDefaultAppearance(),templateId:'imported',fontSize:15},
@@ -85,6 +91,15 @@ test('v2.2 import overwrites the current resume, exports the edited version and 
   });
   assert.equal(imports,1);
   assert.equal(await page.getByLabel('简历名称').inputValue(),'lichanghao_prod');
+  assert.equal(await page.locator('.module-tabs [role=tab]').last().getAttribute('title'),'待整理内容');
+  assert.equal(await page.locator('.module-tabs [role=tab][title="报考信息"]').count(),0);
+  await page.locator('.module-tabs [role=tab][title="待整理内容"]').click();
+  const pendingEditor=page.getByRole('textbox',{name:'待整理内容正文',exact:true});
+  assert.match(await pendingEditor.innerHTML(),/<p>个人项目<\/p>/);
+  assert.match(await pendingEditor.innerHTML(),/<p>第二行独立保留<\/p>/);
+  assert.equal(await page.locator('.pages h2').filter({hasText:'待整理内容'}).count(),1);
+  await page.locator('.module-tabs [role=tab][title="技术实践"]').click();
+  assert.equal(await page.getByRole('textbox',{name:'技术实践正文',exact:true}).textContent(),'部署与排障实践。');
 
   const waitForSize=async (size:string)=>{
    await page.waitForFunction(expected=>{
@@ -108,6 +123,7 @@ test('v2.2 import overwrites the current resume, exports the edited version and 
   await waitForSize('18px');
   assert.equal(await page.getByLabel('简历名称').inputValue(),'lichanghao_prod');
   assert.equal(patches,1);
+  assert.equal(await page.locator('.module-tabs [role=tab]').last().getAttribute('title'),'待整理内容');
 
   const fab=page.getByRole('button',{name:'↓ 下载 / 导出简历',exact:true});
   assert.equal(await fab.evaluate(el=>getComputedStyle(el).position),'static','Download button follows the preview instead of sticking');

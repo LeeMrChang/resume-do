@@ -12,26 +12,18 @@ public class ImportMapper {
     private static final Map<String, String> HEADINGS = Map.ofEntries(
         Map.entry("教育背景", "education"), Map.entry("教育经历", "education"), Map.entry("教育", "education"),
         Map.entry("工作经验", "work"), Map.entry("工作经历", "work"), Map.entry("职业经历", "work"),
-        Map.entry("项目经验", "project"), Map.entry("项目经历", "project"),
+        Map.entry("项目经验", "project"), Map.entry("项目经历", "project"), Map.entry("核心项目经历", "project"),
+        Map.entry("技术实践", "technical-practice"),
         Map.entry("专业技能", "skills"), Map.entry("技能", "skills"), Map.entry("技能特长", "skills"),
         Map.entry("专业技术", "skills"), Map.entry("专业技术能力", "skills"), Map.entry("专业能力", "skills"),
         Map.entry("技术能力", "skills"), Map.entry("个人技能", "skills"), Map.entry("核心技能", "skills"),
         Map.entry("技能清单", "skills"),
         Map.entry("自我评价", "evaluation"), Map.entry("个人评价", "evaluation"),
-        Map.entry("报考信息", "application"), Map.entry("报考岗位", "application"), Map.entry("公考信息", "application"),
         Map.entry("实习经验", "intern"), Map.entry("实习经历", "intern"), Map.entry("实习", "intern"),
-        Map.entry("校园经历", "campus"), Map.entry("校园活动", "campus"), Map.entry("在校经历", "campus"),
-        Map.entry("校园实践", "campus"),
-        Map.entry("荣誉证书", "honor"), Map.entry("荣誉奖项", "honor"), Map.entry("获奖情况", "honor"),
-        Map.entry("获奖荣誉", "honor"), Map.entry("荣誉", "honor"), Map.entry("证书", "honor"),
-        Map.entry("兴趣爱好", "hobby"), Map.entry("个人爱好", "hobby"), Map.entry("爱好", "hobby"),
-        Map.entry("个人概述", "summary"), Map.entry("个人简介", "summary"), Map.entry("个人优势", "summary"),
-        Map.entry("个人总结", "summary"), Map.entry("个人概况", "summary"), Map.entry("职业概述", "summary"),
-        Map.entry("个人亮点", "summary"), Map.entry("简介", "summary"),
-        Map.entry("基本信息", "basic"), Map.entry("个人信息", "basic"), Map.entry("求职意向", "intent"));
+        Map.entry("基本信息", "basic"), Map.entry("个人信息", "basic"), Map.entry("求职意向", "intent"), Map.entry("待整理内容", "custom"));
     private static final List<String> SECTION_ORDER = List.of(
-        "application", "summary", "education", "work", "skills", "project", "intern", "campus", "honor", "evaluation", "hobby");
-    private static final List<String> RECORD_SECTIONS = List.of("education", "work", "project", "intern", "campus");
+        "education", "skills", "work", "project", "evaluation", "intern", "technical-practice");
+    private static final List<String> RECORD_SECTIONS = List.of("education", "work", "project", "intern");
     /** Footers such as {@code 1 / 3} or {@code 第 1 页 共 3 页} are page furniture, not resume content. */
     private static final Pattern PAGE_FOOTER = Pattern.compile(
             "(?:\\d{1,3}\\s*[/／]\\s*\\d{1,3}|第\\s*\\d{1,3}\\s*页(?:\\s*[/／]?\\s*共\\s*\\d{1,3}\\s*页)?|Page\\s+\\d+(?:\\s*(?:/|of)\\s*\\d+)?)",
@@ -63,12 +55,26 @@ public class ImportMapper {
         "海口", "三亚", "昆明", "贵阳", "拉萨", "兰州", "西宁", "银川", "乌鲁木齐", "香港", "澳门", "台北");
     public ImportMapper(ObjectMapper json) { this.json = json; }
 
+    static boolean isSectionHeading(String text) {
+        return HEADINGS.containsKey(text.replaceAll("[\\s:：]", ""));
+    }
+
     public ObjectNode draft(String source, String filename) {
         return draft(source, filename, null);
     }
 
     /** {@code accent} comes from the original file; a missing value keeps the neutral catalogue default. */
     public ObjectNode draft(String source, String filename, String accent) {
+        return draft(source, filename, accent, Set.of());
+    }
+
+    public ObjectNode draft(ImportParser.Parsed parsed, String filename, String accent) {
+        return draft(parsed.text(), filename, accent, parsed.headings());
+    }
+
+    private ObjectNode draft(String source, String filename, String accent, Set<String> sourceHeadings) {
+        var headingKeys = new HashSet<String>();
+        sourceHeadings.forEach(text -> headingKeys.add(text.replaceAll("[\\s\\u3000:：]", "")));
         var result = json.createObjectNode();
         result.put("title", filename.replaceFirst("(?i)\\.(pdf|docx)$", "").substring(0, Math.min(100, filename.replaceFirst("(?i)\\.(pdf|docx)$", "").length())));
         var doc = result.putObject("document"); doc.put("schemaVersion", 1);
@@ -106,13 +112,21 @@ public class ImportMapper {
             if (HEADINGS.containsKey(headingKey)) {
                 current = HEADINGS.get(headingKey);
                 headerOpen = false;
-                if (!current.equals("basic") && !current.equals("intent")) order.add(current);
+                if (!Set.of("basic", "intent", "custom").contains(current)) order.add(current);
                 if (!current.equals("basic") && !current.equals("intent") && headingText.length() >= 3) {
                     titles.putIfAbsent(current, headingText);
                 }
                 continue;
             }
-            if (current.equals("custom") || current.equals("basic") || current.equals("intent")) {
+            // An unmatched heading starts a pending region; never infer header fields inside it.
+            if (!headingKey.equals(basic.path("name").asText().replaceAll("\\s+", ""))
+                    && (headingKeys.contains(headingKey) || unmatchedHeading(line))) {
+                current = "custom";
+                headerOpen = false;
+                grouped.get("custom").add(line);
+                continue;
+            }
+            if ((headerOpen && current.equals("custom")) || current.equals("basic") || current.equals("intent")) {
                 if (line.replaceAll("\\s+", "").equals(basic.path("name").asText())) continue;
                 String beforeFields = line;
                 line = headerFields(line, basic, intent);
@@ -124,7 +138,7 @@ public class ImportMapper {
                     continue;
                 }
             }
-            if (current.equals("custom") || current.equals("basic")) {
+            if ((headerOpen && current.equals("custom")) || current.equals("basic")) {
                 line = consumeUnlabelledContact(line, basic);
                 if (line.isEmpty()) continue;
             }
@@ -203,6 +217,15 @@ public class ImportMapper {
             appearance.put("sectionTitleTint", false); appearance.put("sectionTitleTintColor", "#e8eff5");
         }
         return result;
+    }
+
+    /** Text-only fallback; styled source headings are supplied by ImportParser. */
+    private boolean unmatchedHeading(String line) {
+        if (line.endsWith("：") || line.endsWith(":")) return false;
+        String text = line.replaceAll("^[一二三四五六七八九十0-9]+[、.．)）]\\s*", "").replaceAll("\\s+", "");
+        if (Set.of("项目背景", "项目描述", "核心贡献", "工作内容", "主要职责", "技术栈", "技术框架", "项目职责",
+                "职责描述", "项目成果", "技术选型", "技术架构").contains(text)) return false;
+        return text.matches("[\\p{IsHan}]{0,24}(?:项目|实践|贡献|说明|概述|简介|背景|经历|技能|经验|证书|荣誉|奖项|爱好|信息|成果|能力|优势|作品|计划|评价|总结|清单|活动|研究|出版物)");
     }
 
     // PDF glyph positioning often inserts spaces inside Chinese labels. Split

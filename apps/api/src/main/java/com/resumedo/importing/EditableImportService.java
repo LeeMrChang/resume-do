@@ -36,7 +36,7 @@ public class EditableImportService {
         try {
             java.util.function.Function<java.nio.file.Path, JsonNode> parse = path -> {
                 var parsed=parser.parse(path,extension);
-                var draft=mapper.draft(parsed.text(),filename,styles.accent(path,extension));
+                var draft=mapper.draft(parsed,filename,styles.accent(path,extension));
                 var document=(ObjectNode)draft.path("document");
                 document.put("importWarning",parsed.warning());
                 applyPhoto((ObjectNode)document.path("basic"),photos.extract(path,extension));
@@ -56,7 +56,7 @@ public class EditableImportService {
             var source=originals.source(owner,id,false);
             String extension=parser.extension(row.sourceFilename());
             var parsed=parser.parse(source.path(),extension);
-            var draft=mapper.draft(parsed.text(),row.sourceFilename(),styles.accent(source.path(),extension));
+            var draft=mapper.draft(parsed,row.sourceFilename(),styles.accent(source.path(),extension));
             var document=(ObjectNode)draft.path("document");
             document.put("importWarning",parsed.warning());
             applyPhoto((ObjectNode)document.path("basic"),photos.extract(source.path(),extension));

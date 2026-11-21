@@ -29,23 +29,6 @@
     },
     "sections": [
       {
-        "id": "application",
-        "type": "rich",
-        "title": "报考信息",
-        "visible": false,
-        "items": [
-          {
-            "id": "body-a1f0c3d2b4e84f0c9d61",
-            "title": "",
-            "role": "",
-            "startMonth": "",
-            "endMonth": "",
-            "ongoing": false,
-            "body": ""
-          }
-        ]
-      },
-      {
         "id": "education",
         "type": "records",
         "title": "教育背景",
@@ -53,23 +36,6 @@
         "items": [
           {
             "id": "item-a5b972b4eefe44239d2c",
-            "title": "",
-            "role": "",
-            "startMonth": "",
-            "endMonth": "",
-            "ongoing": false,
-            "body": ""
-          }
-        ]
-      },
-      {
-        "id": "work",
-        "type": "records",
-        "title": "工作经验",
-        "visible": true,
-        "items": [
-          {
-            "id": "item-d73602648e6d4f3ab927",
             "title": "",
             "role": "",
             "startMonth": "",
@@ -97,6 +63,23 @@
         ]
       },
       {
+        "id": "work",
+        "type": "records",
+        "title": "工作经历",
+        "visible": true,
+        "items": [
+          {
+            "id": "item-d73602648e6d4f3ab927",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
         "id": "project",
         "type": "records",
         "title": "项目经验",
@@ -104,57 +87,6 @@
         "items": [
           {
             "id": "item-4c06288ac92544acb6eb",
-            "title": "",
-            "role": "",
-            "startMonth": "",
-            "endMonth": "",
-            "ongoing": false,
-            "body": ""
-          }
-        ]
-      },
-      {
-        "id": "intern",
-        "type": "records",
-        "title": "实习经验",
-        "visible": false,
-        "items": [
-          {
-            "id": "item-a4f36b2821c947b2a9fe",
-            "title": "",
-            "role": "",
-            "startMonth": "",
-            "endMonth": "",
-            "ongoing": false,
-            "body": ""
-          }
-        ]
-      },
-      {
-        "id": "campus",
-        "type": "records",
-        "title": "校园经历",
-        "visible": false,
-        "items": [
-          {
-            "id": "item-71d09b7b237d4945971f",
-            "title": "",
-            "role": "",
-            "startMonth": "",
-            "endMonth": "",
-            "ongoing": false,
-            "body": ""
-          }
-        ]
-      },
-      {
-        "id": "honor",
-        "type": "rich",
-        "title": "荣誉证书",
-        "visible": false,
-        "items": [
-          {
-            "id": "body-ee020e3e63414e799755",
             "title": "",
             "role": "",
             "startMonth": "",
@@ -182,13 +114,30 @@
         ]
       },
       {
-        "id": "hobby",
-        "type": "rich",
-        "title": "兴趣爱好",
+        "id": "intern",
+        "type": "records",
+        "title": "实习经验",
         "visible": false,
         "items": [
           {
-            "id": "body-e54bd8c7f1fe4b9f953d",
+            "id": "item-a4f36b2821c947b2a9fe",
+            "title": "",
+            "role": "",
+            "startMonth": "",
+            "endMonth": "",
+            "ongoing": false,
+            "body": ""
+          }
+        ]
+      },
+      {
+        "id": "technical-practice",
+        "type": "rich",
+        "title": "技术实践",
+        "visible": false,
+        "items": [
+          {
+            "id": "body-technical-practice",
             "title": "",
             "role": "",
             "startMonth": "",
@@ -201,7 +150,7 @@
       {
         "id": "custom",
         "type": "rich",
-        "title": "自定义模块",
+        "title": "待整理内容",
         "visible": false,
         "items": [
           {

@@ -16,6 +16,7 @@ export const richTextSchema = z.string().max(MAX_SECTION_BODY);
 const monthSchema = z.string().regex(monthPattern, '年月格式应为 YYYY-MM');
 
 export const TEMPLATE_IDS = [
+  '2170',
   '1045',
   '1015',
   '1004',
@@ -567,19 +568,16 @@ export function totalTextLength(doc: ResumeDocument): number {
 
 type CanonicalSectionSpec = Pick<ResumeSection, 'id' | 'type' | 'title' | 'visible'>;
 
-/** Editor tab order and default visibility; `application` is new in v2.3 and hidden by default. */
+/** Default editor modules; unmatched imported content is kept in the final module. */
 export const CANONICAL_SECTIONS: readonly CanonicalSectionSpec[] = [
-  { id: 'application', type: 'rich', title: '报考信息', visible: false },
   { id: 'education', type: 'records', title: '教育背景', visible: true },
-  { id: 'work', type: 'records', title: '工作经验', visible: true },
   { id: 'skills', type: 'rich', title: '专业技能', visible: true },
+  { id: 'work', type: 'records', title: '工作经历', visible: true },
   { id: 'project', type: 'records', title: '项目经验', visible: true },
-  { id: 'intern', type: 'records', title: '实习经验', visible: false },
-  { id: 'campus', type: 'records', title: '校园经历', visible: false },
-  { id: 'honor', type: 'rich', title: '荣誉证书', visible: false },
   { id: 'evaluation', type: 'rich', title: '自我评价', visible: true },
-  { id: 'hobby', type: 'rich', title: '兴趣爱好', visible: false },
-  { id: 'custom', type: 'rich', title: '自定义模块', visible: false },
+  { id: 'intern', type: 'records', title: '实习经验', visible: false },
+  { id: 'technical-practice', type: 'rich', title: '技术实践', visible: false },
+  { id: 'custom', type: 'rich', title: '待整理内容', visible: false },
 ];
 
 export const CANONICAL_SECTION_IDS = CANONICAL_SECTIONS.map((section) => section.id);
@@ -689,7 +687,7 @@ export const SAMPLE_DOCUMENT: ResumeDocument = {
     {
       id: 'work',
       type: 'records',
-      title: '工作经验',
+      title: '工作经历',
       visible: true,
       items: [
         {
@@ -764,10 +762,8 @@ export const SAMPLE_DOCUMENT: ResumeDocument = {
       ],
     },
     { id: 'intern', type: 'records', title: '实习经验', visible: false, items: [emptyRecordItem()] },
-    { id: 'campus', type: 'records', title: '校园经历', visible: false, items: [emptyRecordItem()] },
-    { id: 'honor', type: 'rich', title: '荣誉证书', visible: false, items: [emptyRichItem()] },
-    { id: 'hobby', type: 'rich', title: '兴趣爱好', visible: false, items: [emptyRichItem()] },
-    { id: 'custom', type: 'rich', title: '自定义模块', visible: false, items: [emptyRichItem()] },
+    { id: 'technical-practice', type: 'rich', title: '技术实践', visible: false, items: [emptyRichItem()] },
+    { id: 'custom', type: 'rich', title: '待整理内容', visible: false, items: [emptyRichItem()] },
   ],
 };
 

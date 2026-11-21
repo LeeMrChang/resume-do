@@ -52,6 +52,6 @@ test('confirmation reports the module and entry of an invalid date without chang
   const original = draft();
   const work = sectionIndex(original.document, 'work');
   original.document.sections[work].items[0].endMonth = '2019-01';
-  assert.throws(() => validateImportDraft(original), /工作经验 第 1 条/);
+  assert.throws(() => validateImportDraft(original), /工作经历 第 1 条/);
   assert.equal(original.document.sections[work].items[0].endMonth, '2019-01');
 });

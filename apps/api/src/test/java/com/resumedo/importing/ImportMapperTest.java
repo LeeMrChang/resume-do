@@ -19,6 +19,55 @@ class ImportMapperTest {
 
     private final ImportMapper mapper = new ImportMapper(new ObjectMapper());
 
+    @Test void unmatchedHeadingsAndTheirContentGoToPendingUntilTheNextKnownSection() {
+        var draft = mapper.draft("工作经历\n示例公司 2021.01-2023.01\n负责后端交付。\n"
+                + "个人项目\n• 开源工具：React 与 Java。\n开源贡献\n维护开源社区\n提交补丁与文档\n"
+                + "技术实践\n全栈交付：独立完成部署。\n自我评价\n认真负责。", "example.pdf");
+        var doc = draft.path("document");
+        assertThat(section(doc, "work").path("items").toString()).contains("负责后端交付")
+                .doesNotContain("个人项目", "开源工具", "开源贡献", "维护开源社区");
+        assertThat(section(doc, "technical-practice").path("items").toString()).contains("全栈交付")
+                .doesNotContain("开源贡献", "个人项目");
+        var pending = section(doc, "custom");
+        assertThat(doc.path("sections").get(doc.path("sections").size()-1).path("id").asText()).isEqualTo("custom");
+        assertThat(pending.path("visible").asBoolean()).isTrue();
+        var body = new StringBuilder();
+        pending.path("items").forEach(item -> body.append(item.path("body").asText()));
+        assertThat(body.toString()).contains("<p>个人项目</p>", "<p>开源贡献</p>",
+                "<p>维护开源社区</p>", "<p>提交补丁与文档</p>").doesNotContain("负责后端交付", "全栈交付", "认真负责");
+        assertThatCode(() -> new ResumeValidator().validate(doc, draft.path("appearance"))).doesNotThrowAnyException();
+    }
+
+    @Test void pendingContentIsNotConsumedAsHeaderFieldsOrContacts() {
+        var doc = mapper.draft("姓名：示例甲\n工作经历\n示例公司 2020.01-2021.01\n负责服务。\n"
+                + "其他说明\n邮箱：keep@example.invalid\n电话：13800000000\n项目背景：待整理原文\n"
+                + "项目经验\n业务平台 2021.01-2022.01\n正常项目描述。", "example.docx").path("document");
+        assertThat(doc.path("basic").path("email").asText()).isEmpty();
+        assertThat(doc.path("basic").path("phone").asText()).isEmpty();
+        var pending = section(doc, "custom").path("items").toString();
+        assertThat(pending).contains("其他说明", "邮箱：keep@example.invalid", "电话：13800000000", "项目背景：待整理原文");
+        assertThat(section(doc, "project").path("items").toString()).contains("正常项目描述").doesNotContain("待整理原文");
+    }
+
+    @Test void bodyLabelsDatesAndShortTechnicalLinesRemainInsideKnownSections() {
+        var doc = mapper.draft("项目经验\n业务平台 2020.01-2021.01\n项目背景：\n服务商户。\n"
+                + "技术栈：Spring Boot、Redis\n核心贡献：\n• 完成数据迁移。\n专业技能\nJava 与 SQL\nMySQL\nRedis",
+                "example.pdf").path("document");
+        assertThat(section(doc, "project").path("items").toString()).contains("项目背景", "技术栈", "核心贡献", "数据迁移");
+        assertThat(section(doc, "skills").path("items").toString()).contains("Java 与 SQL", "MySQL", "Redis");
+        assertThat(section(doc, "custom").path("items")).isEmpty();
+    }
+
+    @Test void sourceHeadingSpacingAndShortUnknownTitlesCannotLeakIntoThePreviousSection() {
+        var parsed = new ImportParser.Parsed("工作经历\n负责服务。\n我的  另一面\n保留此行\n自我评价\n认真负责。\n证书\n保留证书原文", "",
+                java.util.Set.of("我的 另一面"));
+        var doc = mapper.draft(parsed, "example.pdf", null).path("document");
+        assertThat(section(doc, "work").path("items").toString()).doesNotContain("另一面", "证书", "保留此行");
+        var pending = section(doc, "custom").path("items").toString();
+        assertThat(pending).contains("我的  另一面", "<p>证书</p>", "<p>保留此行</p>", "<p>保留证书原文</p>");
+        assertThat(section(doc, "evaluation").path("items").toString()).doesNotContain("证书");
+    }
+
     /** Sections are looked up by id so the canonical order can change without rewriting assertions. */
     private static JsonNode section(JsonNode doc, String id) {
         for (JsonNode section : doc.path("sections")) {
@@ -57,14 +106,12 @@ class ImportMapperTest {
         assertThat(text.toString()).contains("无法归属的经历", "<script>alert(1)</script>", "未知内容".repeat(6000));
         assertThatCode(() -> new ResumeValidator().validate(draft.path("document"), draft.path("appearance"))).doesNotThrowAnyException();
     }
-    @Test void recognizesBuiltInSectionHeadingsIncludingInternCampusHonorHobbyAndApplication() {
+    @Test void removedSectionsRemainInPendingAndInternStillMapsNormally() {
         var doc = mapper.draft("报考信息\n报考岗位：综合管理岗\n实习经验\n某公司 2023.07-2023.09\n实习内容\n校园经历\n学生会 2021.09-2022.06\n组织活动\n荣誉证书\n一等奖学金\n兴趣爱好\n跑步", "full.docx").path("document");
-        assertThat(section(doc, "application").path("items").get(0).path("body").asText()).contains("综合管理岗");
         assertThat(section(doc, "intern").path("items").get(0).path("title").asText()).isEqualTo("某公司");
-        assertThat(section(doc, "campus").path("items").get(0).path("title").asText()).isEqualTo("学生会");
-        assertThat(section(doc, "honor").path("items").get(0).path("body").asText()).contains("一等奖学金");
-        assertThat(section(doc, "hobby").path("items").get(0).path("body").asText()).contains("跑步");
-        assertThat(section(doc, "custom").path("items")).isEmpty();
+        var pending = section(doc, "custom").path("items").toString();
+        assertThat(pending).contains("报考信息", "综合管理岗", "校园经历", "学生会", "荣誉证书", "兴趣爱好", "跑步");
+        assertThat(doc.path("sections").size()).isEqualTo(2);
     }
     @Test void invalidOrRepeatedFieldsRemainAvailableForManualReview() {
         var draft = mapper.draft("姓名：甲\n姓名：乙\n邮箱：not-an-email\n未知：保留", "test.pdf");
@@ -197,7 +244,7 @@ class ImportMapperTest {
         assertThat(december.path("role").asText()).isEqualTo("Java工程师");
     }
 
-    @Test void importsUnlabelledHeaderAndSummaryInSourceOrderWithoutPending() {
+    @Test void importsUnlabelledHeaderAndSendsUnsupportedSummaryToPending() {
         String source = "测试甲\n"
                 + "深圳  面议  随时到岗  资深Java工程师/技术负责人\n"
                 + "男    7年经验    13800000000    person01@example.invalid\n"
@@ -229,10 +276,8 @@ class ImportMapperTest {
         assertThat(doc.path("importStyle").path("metaStyle").asText()).isEqualTo("inline");
         var ids = new java.util.ArrayList<String>();
         doc.path("sections").forEach(item -> ids.add(item.path("id").asText()));
-        assertThat(ids).containsExactly("summary", "skills", "work", "education", "evaluation", "custom");
-        assertThat(section(doc, "summary").path("title").asText()).isEqualTo("个人概述");
-        assertThat(section(doc, "summary").path("items").get(0).path("body").asText()).contains("7 年 Java");
-        assertThat(section(doc, "custom").path("items")).isEmpty();
+        assertThat(ids).containsExactly("skills", "work", "education", "evaluation", "custom");
+        assertThat(section(doc, "custom").path("items").toString()).contains("个人概述", "7 年 Java");
         assertThatCode(() -> new ResumeValidator().validate(doc, draft.path("appearance"))).doesNotThrowAnyException();
     }
 
@@ -280,8 +325,8 @@ class ImportMapperTest {
         String source = "测试甲\n13800000000\n个人概述\n第一段\n1 / 3\n专业技能\nJava / JVM\n2 / 3\n自我评价\n认真负责\n3 / 3";
         var doc = mapper.draft(source, "x.pdf").path("document");
         assertThat(doc.toString()).doesNotContain("1 / 3", "2 / 3", "3 / 3");
-        assertThat(section(doc, "summary").path("items").get(0).path("body").asText()).contains("第一段");
+        assertThat(section(doc, "custom").path("items").get(0).path("body").asText()).contains("第一段");
         assertThat(section(doc, "skills").path("items").get(0).path("body").asText()).contains("Java / JVM");
-        assertThat(section(doc, "custom").path("items")).isEmpty();
+        assertThat(section(doc, "custom").path("items").toString()).contains("个人概述");
     }
 }

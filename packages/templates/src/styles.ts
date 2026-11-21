@@ -875,6 +875,43 @@ export const RESUME_CSS = `
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", sans-serif;
 }
+
+/* PDF reference: monochrome, full-width gray headings and three-column personal details. */
+.tpl-2170 .r-intro { padding: 0; border: 0; }
+.tpl-2170 .r-technical-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 20px;
+  padding-bottom: 6px;
+}
+.tpl-2170 .r-intro h1 { margin: 0; font-size: 2.3em; letter-spacing: 0.18em; }
+.tpl-2170 .r-intro .r-intent { margin-left: auto; color: #555; font-weight: 700; text-align: right; }
+.tpl-2170 .r-section-title {
+  margin: 0 0 3px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 0;
+  background: var(--r-tint);
+  color: var(--r-ink);
+  font-size: 1.05em;
+}
+.tpl-2170 .r-personal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px 16px;
+  padding: 0 5px;
+}
+.tpl-2170 .r-personal-grid .r-contact { min-width: 0; overflow-wrap: anywhere; }
+.tpl-2170 .r-personal-grid em { font-style: normal; }
+.tpl-2170 .r-personal-grid em::after { content: '：'; }
+.tpl-2170 .r-record { padding-top: 5px; gap: 0 6px; }
+.tpl-2170 .r-record-date { color: #777; font-size: 0.94em; }
+.tpl-2170 .r-paragraph { padding-bottom: 1px; }
+.tpl-2170 .r-block.r-bullet { padding: 0; }
+.tpl-2170 .r-block > .r-bullet { padding: 0 0 2px 16px; }
+.tpl-2170 .r-bullet .r-mark { color: #777; }
 .font-serif { font-family: "Songti SC", "Noto Serif CJK SC", "Times New Roman", serif; }
 .font-arial { font-family: Arial, "PingFang SC", sans-serif; }
 .font-noto-sans {

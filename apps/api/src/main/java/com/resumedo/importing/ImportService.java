@@ -159,7 +159,7 @@ public class ImportService {
             Future<?> task = executor.submit(() -> {
                 try {
                     var parsed = parser.parse(target, extension);
-                    var draft=mapper.draft(parsed.text(), filename);
+                    var draft=mapper.draft(parsed, filename, null);
                     ((ObjectNode)draft.path("document").path("basic")).put("photo",photos.extract(target,extension));
                     jobs.result(id, version, parsed.text(), draft.toString(), parsed.warning());
                 } catch (ApiException e) { jobs.fail(id, version, e.code(), e.getMessage()); }

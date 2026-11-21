@@ -10,13 +10,43 @@ import javax.xml.stream.*;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ImportParser {
     public static final long MAX_BYTES = 20L * 1024 * 1024;
     public static final int MAX_TEXT = 100_000;
-    public record Parsed(String text, String warning) {}
+    public record Parsed(String text, String warning, Set<String> headings) {
+        public Parsed(String text, String warning) { this(text, warning, Set.of()); }
+        public Parsed { headings = Set.copyOf(headings); }
+    }
+
+    private record PdfLine(String text, float size, String font, float left) {
+        PdfLine { font = Objects.requireNonNullElse(font, ""); }
+    }
+
+    /** Keep heading boundaries separate from extracted text, including names not in the section table. */
+    private static boolean headingText(String text) {
+        return text.strip().matches("[\\p{IsHan}A-Za-z][\\p{IsHan}A-Za-z0-9 /&·-]{1,29}");
+    }
+
+    private Set<String> pdfHeadings(List<PdfLine> lines, Map<Integer, Integer> sizes) {
+        int bodySize = sizes.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(0);
+        var fontWeights = new HashMap<String, Integer>();
+        lines.forEach(line -> fontWeights.merge(line.font(), line.text().length(), Integer::sum));
+        String bodyFont = fontWeights.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse("");
+        var known = lines.stream().filter(line -> ImportMapper.isSectionHeading(line.text())).toList();
+        var headings = new HashSet<String>();
+        for (var line : lines) {
+            if (!headingText(line.text())) continue;
+            boolean sameStyle = known.stream().anyMatch(title -> Math.abs(title.size() - line.size()) < 0.2f
+                    && title.font().equals(line.font()) && Math.abs(title.left() - line.left()) < 3f);
+            if ((bodySize > 0 && line.size() * 100 > bodySize * 1.05f)
+                    || (sameStyle && !line.font().equals(bodyFont))) headings.add(line.text());
+        }
+        return headings;
+    }
 
     public String extension(String filename) {
         String lower = filename.toLowerCase(Locale.ROOT);
@@ -52,7 +82,37 @@ public class ImportParser {
                 throw error("PROTECTED_FILE", "PDF 不允许提取文字，请提供可读取的文件");
             var text = new StringBuilder();
             int emptyPages = 0;
-            var stripper = new PDFTextStripper();
+            var lines = new ArrayList<PdfLine>();
+            var sizes = new HashMap<Integer, Integer>();
+            var stripper = new PDFTextStripper() {
+                private final StringBuilder line = new StringBuilder();
+                private float size, left = Float.MAX_VALUE;
+                private String font = "";
+                @Override protected void writeString(String value, List<TextPosition> positions) throws IOException {
+                    line.append(value);
+                    for (var position : positions) {
+                        float glyphSize = position.getTextMatrix().getScalingFactorY();
+                        if (!position.getUnicode().isBlank()) sizes.merge(Math.round(glyphSize * 100), 1, Integer::sum);
+                        if (glyphSize >= size) { size = glyphSize; font = position.getFont().getName(); }
+                        left = Math.min(left, position.getXDirAdj());
+                    }
+                    super.writeString(value, positions);
+                }
+                @Override protected void writeWordSeparator() throws IOException {
+                    line.append(' ');
+                    super.writeWordSeparator();
+                }
+                @Override protected void writeLineSeparator() throws IOException {
+                    if (!line.isEmpty()) lines.add(new PdfLine(line.toString().strip(), size, font, left));
+                    line.setLength(0); size = 0; left = Float.MAX_VALUE; font = "";
+                    super.writeLineSeparator();
+                }
+                @Override protected void endPage(org.apache.pdfbox.pdmodel.PDPage page) throws IOException {
+                    if (!line.isEmpty()) { lines.add(new PdfLine(line.toString().strip(), size, font, left));
+                        line.setLength(0); size = 0; left = Float.MAX_VALUE; font = ""; }
+                    super.endPage(page);
+                }
+            };
             stripper.setSortByPosition(true);
             stripper.setWordSeparator("  ");
             for (int page = 1; page <= document.getNumberOfPages(); page++) {
@@ -72,13 +132,13 @@ public class ImportParser {
                     stripper.writeText(document, output);
                 } catch (IOException failure) {
                     if (!text.toString().isBlank()) return new Parsed(text.toString(),
-                        "部分 PDF 页面读取失败，已保留可读取文字。请下载原文件核对缺失内容，重试或在编辑器手动补全。");
+                        "部分 PDF 页面读取失败，已保留可读取文字。请下载原文件核对缺失内容，重试或在编辑器手动补全。", pdfHeadings(lines, sizes));
                     throw failure;
                 }
                 if (text.substring(before).isBlank()) emptyPages++;
             }
             if (text.toString().isBlank()) throw error("SCANNED_PDF", "扫描版或无可提取文字的 PDF 暂不支持，可手动创建简历");
-            return new Parsed(text.toString(), emptyPages > 0 ? "部分页面没有文字层，可能包含扫描内容，请核对原文件，手动补全。" : "PDF 多栏阅读顺序可能有差异，请核对编辑内容。");
+            return new Parsed(text.toString(), emptyPages > 0 ? "部分页面没有文字层，可能包含扫描内容，请核对原文件，手动补全。" : "PDF 多栏阅读顺序可能有差异，请核对编辑内容。", pdfHeadings(lines, sizes));
         }
     }
 
@@ -116,25 +176,28 @@ public class ImportParser {
         if (!contentTypes.contains("wordprocessingml.document.main+xml") || contentTypes.contains("macroEnabled"))
             throw error("UNSAFE_ARCHIVE", "Word 文档类型不受支持或包含宏");
         var text = new StringBuilder();
+        var headings = new HashSet<String>();
         try {
-            appendXml(text, parts.remove("word/document.xml"));
-            for (var part : parts.entrySet()) if (!part.getKey().equals("[Content_Types].xml")) appendXml(text, part.getValue());
+            appendXml(text, parts.remove("word/document.xml"), headings);
+            for (var part : parts.entrySet()) if (!part.getKey().equals("[Content_Types].xml")) appendXml(text, part.getValue(), headings);
         } catch (XMLStreamException failure) {
             if (!text.toString().isBlank()) return new Parsed(text.toString(),
-                "部分 Word 内容损坏，已保留可读取文字。请下载原文件核对缺失内容，重试或在编辑器手动补全。");
+                "部分 Word 内容损坏，已保留可读取文字。请下载原文件核对缺失内容，重试或在编辑器手动补全。", headings);
             throw failure;
         }
         if (text.toString().isBlank()) throw error("NO_TEXT", "Word 文件没有可提取的正文，请手动创建或提供文字版文件");
-        return new Parsed(text.toString(), "已提取文字并尝试提取内嵌照片，不复刻图形或原版式。请对照原件核对表格和经历顺序。");
+        return new Parsed(text.toString(), "已提取文字并尝试提取内嵌照片，不复刻图形或原版式。请对照原件核对表格和经历顺序。", headings);
     }
 
-    private void appendXml(StringBuilder text, byte[] bytes) throws XMLStreamException {
+    private void appendXml(StringBuilder text, byte[] bytes, Set<String> headings) throws XMLStreamException {
         XMLInputFactory factory = XMLInputFactory.newFactory();
         factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
         factory.setProperty("javax.xml.stream.isSupportingExternalEntities", false);
         factory.setXMLResolver((publicID, systemID, baseURI, namespace) -> { throw new XMLStreamException("External entities disabled"); });
         XMLStreamReader reader = factory.createXMLStreamReader(new ByteArrayInputStream(bytes));
         boolean inText = false;
+        int paragraphStart = 0;
+        boolean paragraphHeading = false;
         try {
             while (reader.hasNext()) {
                 interrupted();
@@ -143,13 +206,25 @@ public class ImportParser {
                     throw error("UNSAFE_XML", "DOCX 包含不支持的 XML 实体或 DTD");
                 if (event == XMLStreamConstants.START_ELEMENT) {
                     String name = reader.getLocalName();
+                    if (name.equals("p")) { paragraphStart = text.length(); paragraphHeading = false; }
+                    if (name.equals("pStyle") || name.equals("outlineLvl")) {
+                        for (int i = 0; i < reader.getAttributeCount(); i++) {
+                            String value = reader.getAttributeValue(i);
+                            if (reader.getAttributeLocalName(i).equals("val") &&
+                                    (name.equals("outlineLvl") ? value.matches("[0-8]") : value.matches("(?i)(heading|标题)[ -]?[1-9]?"))) paragraphHeading = true;
+                        }
+                    }
                     if (name.equals("t")) inText = true;
                     if (name.equals("tab")) text.append('\t');
                     if (name.equals("br") || name.equals("cr")) text.append('\n');
                 } else if (event == XMLStreamConstants.END_ELEMENT) {
                     String name = reader.getLocalName();
                     if (name.equals("t")) inText = false;
-                    if (name.equals("p")) text.append('\n');
+                    if (name.equals("p")) {
+                        String paragraph = text.substring(paragraphStart).strip();
+                        if (paragraphHeading && headingText(paragraph)) headings.add(paragraph);
+                        text.append('\n');
+                    }
                 } else if (event == XMLStreamConstants.CHARACTERS && inText) text.append(reader.getText());
                 if (text.length() > MAX_TEXT) throw error("TEXT_LIMIT", "提取文字超过 100000 字，请拆分后导入");
             }

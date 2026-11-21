@@ -4,6 +4,7 @@ import { CATALOG_170 } from './catalog170';
 export type TemplateLayoutKind = 'single' | 'timeline' | 'sidebar' | 'split';
 
 export type TemplateHeaderStyle =
+  | 'technical'
   | 'plain'
   | 'centered'
   | 'centered-plain'
@@ -160,6 +161,11 @@ const INLINE_ROLE_GROUPS = new Set<TemplateGroup>([
 ]);
 
 export const TEMPLATE_CATALOG: TemplateSpec[] = [
+  make('2170', '灰阶技术', '极简黑白', 'single', 'technical', 'fill', '#222222', '#666666', '#e8e8e8', '#222222', {
+    photo: false,
+    inlineRole: true,
+    showFooter: false,
+  }),
   make('imported', '原样还原', '原样还原', 'single', 'classic', 'classic', '#67a886', '#a8d3b9', '#eef6f1', '#22303a', {
     recordInline: true,
     showFooter: false,

@@ -32,13 +32,29 @@ test('default document lists every canonical module in tab order', () => {
   assert.equal(safeParseDocument(doc).success, true);
 });
 
+test('default modules are concise and pending content is the final editable module', () => {
+  const doc = createDefaultDocument();
+  assert.deepEqual(doc.sections.map(section => section.id), [
+    'education', 'skills', 'work', 'project', 'evaluation', 'intern', 'technical-practice', 'custom',
+  ]);
+  assert.equal(doc.sections.at(-1)?.title, '待整理内容');
+  assert.equal(doc.sections.at(-1)?.visible, false);
+  assert.equal(doc.sections.find(section => section.id === 'technical-practice')?.title, '技术实践');
+  const imported = structuredClone(doc);
+  imported.moduleDefaultsApplied = false;
+  imported.sections = [doc.sections[2], doc.sections.at(-1)!];
+  const merged = ensureCanonicalSections(imported);
+  assert.equal(merged.sections.at(-1)?.id, 'custom');
+  assert.deepEqual(ensureCanonicalSections(merged), merged);
+});
+
 test('blank documents can be seeded with a detached sample copy', () => {
   assert.equal(isBlankDocument(createDefaultDocument()), true);
   assert.equal(isBlankDocument(SAMPLE_DOCUMENT), false);
 
   const seeded = createSampleDocument();
   assert.equal(safeParseDocument(seeded).success, true);
-  assert.equal(seeded.sections[0].id, 'application', 'missing canonical modules are filled in');
+  assert.equal(seeded.sections[0].id, 'education', 'sample starts with a supported module');
   assert.ok(seeded.sections.some((section) => section.id === 'education'));
 
   seeded.basic.name = '张三';
@@ -64,18 +80,18 @@ test('documents with typed content are not blank', () => {
 test('ensureCanonicalSections adds missing modules once without reordering existing ones', () => {
   const legacy = createDefaultDocument();
   legacy.moduleDefaultsApplied = false;
-  legacy.sections = legacy.sections.filter((section) => !['application', 'intern', 'honor'].includes(section.id));
+  legacy.sections = legacy.sections.filter((section) => !['skills', 'intern', 'technical-practice'].includes(section.id));
   legacy.sections.push({ id: 'custom-2', type: 'rich', title: '自定义模块', visible: true, items: legacy.sections[0].items.slice(0, 1) });
   const merged = ensureCanonicalSections(legacy);
   assert.equal(safeParseDocument(merged).success, true);
   assert.equal(merged.moduleDefaultsApplied, true);
   const ids = merged.sections.map((section) => section.id);
-  assert.deepEqual(ids.slice(0, 4), ['application', 'education', 'work', 'skills']);
-  assert.ok(ids.includes('application'));
-  assert.ok(ids.indexOf('application') < ids.indexOf('education'), 'missing canonical modules fill their canonical position');
-  assert.ok(ids.indexOf('intern') < ids.indexOf('campus'));
+  assert.deepEqual(ids.slice(0, 4), ['education', 'skills', 'work', 'project']);
+  assert.ok(ids.indexOf('skills') < ids.indexOf('work'), 'missing modules fill their canonical position');
+  assert.ok(ids.indexOf('intern') < ids.indexOf('technical-practice'));
+  assert.ok(ids.indexOf('technical-practice') < ids.indexOf('custom'));
   assert.equal(ids[ids.length - 1], 'custom-2', 'unknown modules keep their place');
-  assert.equal(merged.sections.filter((section) => section.id === 'application')[0].visible, false);
+  assert.equal(merged.sections.filter((section) => section.id === 'technical-practice')[0].visible, false);
   assert.deepEqual(ensureCanonicalSections(merged).sections.map((section) => section.id), ids, 'merge is idempotent');
 });
 

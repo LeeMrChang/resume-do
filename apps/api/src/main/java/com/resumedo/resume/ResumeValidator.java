@@ -48,7 +48,7 @@ public class ResumeValidator {
             "2130", "2131", "2132", "2133", "2134", "2135", "2136", "2137", "2138", "2139",
             "2140", "2141", "2142", "2143", "2144", "2145", "2146", "2147", "2148", "2149",
             "2150", "2151", "2152", "2153", "2154", "2155", "2156", "2157", "2158", "2159",
-            "2160", "2161", "2162", "2163", "2164", "2165", "2166", "2167", "2168", "2169");
+            "2160", "2161", "2162", "2163", "2164", "2165", "2166", "2167", "2168", "2169", "2170");
     private static final Pattern PHOTO = Pattern.compile("^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$");
     private static final Pattern FONT_SIZE = Pattern.compile("^(?:12|13|14|15|16|18|20|22|24)px$");
     private static final Pattern TEXT_ALIGN = Pattern.compile("^(?:left|center|right|justify)$");

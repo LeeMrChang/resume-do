@@ -119,6 +119,29 @@ function headerBlock(input: RenderInput): ResumeBlock {
     ? `<img src="${escapeHtml(basic.photo)}" alt="${escapeHtml(name)}" />`
     : `<span class="r-initial">${escapeHtml(initial)}</span>`;
 
+  if (spec.header === 'technical') {
+    const rows = [
+      { label: '姓名', value: name },
+      ...basicKeys.map(key => basicEntry(basic, key, false)),
+      ...(basic.customFields ?? []),
+    ].filter(row => Boolean(row.value));
+    const html = [
+      '<div class="r-intro"><div class="r-intro-main">',
+      `<div class="r-technical-heading"><h1>${escapeHtml(name)}</h1>`,
+      intentLine ? `<p class="r-intent">${escapeHtml(intentLine)}</p>` : '',
+      '</div>',
+      '<h2 class="r-section-title r-personal-title">个人信息</h2>',
+      `<div class="r-personal-grid">${rows.map(({ label, value }) =>
+        `<span class="r-contact"><em>${escapeHtml(label)}</em><span>${escapeHtml(value ?? '')}</span></span>`,
+      ).join('')}</div>`,
+      '</div></div>',
+    ].join('');
+    return {
+      id: 'header', kind: 'header', keepWithNext: false, html,
+      plainText: [name, intentLine, '个人信息', ...rows.map(row => `${row.label}${row.value}`)].filter(Boolean).join(' '),
+    };
+  }
+
   if (classic) {
     const rowKeys = Array.isArray(basic.fieldOrder) && basic.fieldOrder.length ? basicKeys : CLASSIC_ROW_KEYS;
     // Labelled sources print 求职意向 as one of their label/value cells.

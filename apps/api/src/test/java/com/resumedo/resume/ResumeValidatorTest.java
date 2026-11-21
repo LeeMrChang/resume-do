@@ -157,6 +157,14 @@ class ResumeValidatorTest {
     }
 
     @Test
+    void acceptsGrayTechnicalTemplate() {
+        ObjectNode appearance = (ObjectNode) validAppearance();
+        appearance.put("templateId", "2170");
+        assertThat(validator.validate(validDocument(), appearance).templateId()).isEqualTo("2170");
+        assertThat(ResumeValidator.supportsTemplate("2170")).isTrue();
+    }
+
+    @Test
     void rejectsUnknownTemplateId() {
         ObjectNode appearance = (ObjectNode) validAppearance();
         appearance.put("templateId", "fancy");
